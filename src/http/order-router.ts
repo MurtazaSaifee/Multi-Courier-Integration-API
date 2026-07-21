@@ -38,5 +38,20 @@ export function createOrderRouter(
     }
   });
 
+  router.post('/orders/:order_id/cancel', async (request, response, next) => {
+    try {
+      const orderId = String(request.params.order_id || '').trim();
+      if (!orderId) {
+        throw new ValidationError([
+          { field: 'order_id', message: 'Order ID is required' }
+        ]);
+      }
+      const result = await orderService.cancelOrder(orderId);
+      response.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 }
