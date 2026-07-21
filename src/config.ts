@@ -24,6 +24,7 @@ export type AppConfig = Readonly<{
   requestTimeoutMs: number;
   retryCount: number;
   retryDelayMs: number;
+  bulkConcurrency: number;
 }>;
 
 export class ConfigurationError extends Error {
@@ -106,7 +107,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     }),
     requestTimeoutMs: integerValue(environment, 'REQUEST_TIMEOUT_MS', 1),
     retryCount: integerValue(environment, 'RETRY_COUNT', 0),
-    retryDelayMs: integerValue(environment, 'RETRY_DELAY_MS', 0)
+    retryDelayMs: integerValue(environment, 'RETRY_DELAY_MS', 0),
+    bulkConcurrency: environment['BULK_CONCURRENCY']
+      ? integerValue(environment, 'BULK_CONCURRENCY', 1, 50)
+      : 5
   });
 }
 

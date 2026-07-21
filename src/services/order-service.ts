@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 
+import { config } from '../config.js';
 import type { createOrderRepository } from '../db/repositories/order-repository.js';
 import type { createTrackingHistoryRepository } from '../db/repositories/tracking-history-repository.js';
 import {
@@ -8,11 +9,14 @@ import {
 } from '../couriers/courier-registry.js';
 import { CourierProviderError } from '../couriers/courier-adapter.js';
 import type {
+  BulkCreateOrderResponse,
+  BulkOrderResult,
   CancelOrderResponse,
   CourierCancelResult,
   CourierTrackResult,
   CreateOrderRequest,
   CreateOrderResponse,
+  NormalizedError,
   OrderRecord,
   TrackOrderResponse
 } from '../domain/contracts.js';
@@ -27,6 +31,7 @@ import {
   OrderNotFoundError,
   ValidationError
 } from '../errors/application-error.js';
+import { validateBulkOrders } from '../http/validation.js';
 
 export type OrderRepository = ReturnType<typeof createOrderRepository>;
 export type TrackingHistoryRepository = ReturnType<typeof createTrackingHistoryRepository>;
@@ -55,6 +60,32 @@ function canonicalize(val: unknown): unknown {
 
 export function areRequestsEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
+}
+
+export async function processWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results: R[] = new Array(items.length);
+  let currentIndex = 0;
+
+  async function worker() {
+    while (currentIndex < items.length) {
+      const index = currentIndex++;
+      results[index] = await fn(items[index], index);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+  const workerPromises = Array.from({ length: workerCount }, () => worker());
+
+  await Promise.all(workerPromises);
+  return results;
 }
 
 export function buildCreateOrderResponse(order: OrderRecord): CreateOrderResponse | undefined {
@@ -380,6 +411,53 @@ export function createOrderService(
         ...cancelResult.response,
         order_id: order.merchant_order_id
       };
+    },
+
+    async createBulkOrders(
+      rawItems: unknown,
+      requestId: string,
+      concurrencyLimit: number = config.bulkConcurrency
+    ): Promise<BulkCreateOrderResponse> {
+      const validationResults = validateBulkOrders(rawItems, requestId);
+
+      const results = await processWithConcurrency(
+        validationResults,
+        concurrencyLimit,
+        async (itemRes): Promise<BulkOrderResult> => {
+          if (!itemRes.valid) {
+            return itemRes.failure;
+          }
+
+          try {
+            const createResponse = await this.createOrder(itemRes.item);
+            return {
+              order_id: itemRes.item.order_id,
+              success: true,
+              result: createResponse
+            };
+          } catch (error: any) {
+            let normalizedError: NormalizedError;
+            if (error instanceof ApplicationError) {
+              normalizedError = error.toResponse(requestId).error;
+            } else {
+              normalizedError = {
+                code: 'INTERNAL_ERROR',
+                message: error?.message || 'An unexpected error occurred',
+                details: [],
+                request_id: requestId
+              };
+            }
+
+            return {
+              order_id: itemRes.item.order_id,
+              success: false,
+              error: normalizedError
+            };
+          }
+        }
+      );
+
+      return { results };
     }
   };
 }
