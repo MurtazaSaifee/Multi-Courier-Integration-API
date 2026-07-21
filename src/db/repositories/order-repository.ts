@@ -1,31 +1,19 @@
 import type { Knex } from 'knex';
 
-type OrderRecord = {
-  id: string;
-  merchant_order_id: string;
-  courier_partner: string;
-  courier_order_id: string | null;
-  tracking_number: string | null;
-  status: string;
-  normalized_request: unknown;
-  courier_request_payload: unknown | null;
-  courier_response_payload: unknown | null;
-  failure_code: string | null;
-  failure_message: string | null;
-  is_deleted: boolean;
-  deleted_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-};
+import type {
+  CreateOrderRequest,
+  NormalizedStatus,
+  OrderRecord
+} from '../../domain/contracts.js';
 
 type PendingOrderInput = {
   merchantOrderId: string;
   courierPartner: string;
-  normalizedRequest: unknown;
+  normalizedRequest: CreateOrderRequest;
 };
 
 type CurrentStateUpdate = {
-  status: string;
+  status: NormalizedStatus;
   courierOrderId?: string | null;
   trackingNumber?: string | null;
   courierRequestPayload?: unknown | null;

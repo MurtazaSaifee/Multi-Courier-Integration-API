@@ -1,16 +1,13 @@
 import type { Knex } from 'knex';
 
-type TrackingHistoryRecord = {
-  id: string;
-  order_id: string;
-  status: string;
-  status_at: Date;
-  raw_payload: unknown;
-};
+import type {
+  NormalizedStatus,
+  TrackingHistoryRecord
+} from '../../domain/contracts.js';
 
 type HistoryEventInput = {
   orderId: string;
-  status: string;
+  status: NormalizedStatus;
   statusAt: Date;
   rawPayload: unknown;
 };
