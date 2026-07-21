@@ -614,6 +614,7 @@ export class UrbaneBoltAdapter implements CourierAdapter {
         }
 
         this.cachedAuthentication = undefined;
+        this.authenticationInFlight = undefined;
         const refreshedAuthentication = await this.getAuthentication();
         return sendRequest(refreshedAuthentication);
       }
