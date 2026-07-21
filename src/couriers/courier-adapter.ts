@@ -24,6 +24,8 @@ export type CourierProviderErrorOptions = {
   retryable: boolean;
   statusCode?: number;
   providerCode?: string;
+  rawRequestPayload?: unknown;
+  rawResponsePayload?: unknown;
 };
 
 /** Internal error shape for failures returned by a courier provider. */
@@ -33,6 +35,8 @@ export class CourierProviderError extends Error {
   readonly retryable: boolean;
   readonly statusCode?: number;
   readonly providerCode?: string;
+  readonly rawRequestPayload?: unknown;
+  readonly rawResponsePayload?: unknown;
 
   constructor(options: CourierProviderErrorOptions) {
     super(options.message);
@@ -42,6 +46,8 @@ export class CourierProviderError extends Error {
     this.retryable = options.retryable;
     this.statusCode = options.statusCode;
     this.providerCode = options.providerCode;
+    this.rawRequestPayload = options.rawRequestPayload;
+    this.rawResponsePayload = options.rawResponsePayload;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
