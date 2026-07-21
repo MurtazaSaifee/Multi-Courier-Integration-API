@@ -27,6 +27,7 @@ export const URBANEBOLT_COURIER_PARTNER = 'urbanebolt';
 const AUTHENTICATION_PATH = '/api/v1/auth/getToken/';
 const CREATE_SHIPMENT_PATH = '/api/v1/services/manifest/';
 const TRACK_SHIPMENT_PATH = '/api/v1/services/tracking-pub/';
+const CANCEL_SHIPMENT_PATH = '/api/v1/services/cancel/';
 
 export type UrbaneBoltAdapterConfig = {
   baseUrl: string;
@@ -322,6 +323,80 @@ function mapTrackResponse(
   };
 }
 
+function isAlreadyCancelledMessage(message: unknown): boolean {
+  if (typeof message !== 'string') {
+    return false;
+  }
+  const lower = message.toLowerCase();
+  return lower.includes('already cancelled')
+    || lower.includes('already canceled')
+    || (lower.includes('already') && lower.includes('cancel'));
+}
+
+function mapCancelResponse(
+  input: CancelShipmentInput,
+  rawRequestPayload: unknown,
+  rawResponsePayload: unknown
+): CourierCancelResult {
+  const root = asRecord(rawResponsePayload);
+  const sources = responseSources(rawResponsePayload);
+
+  const successfulItems = root?.successResponse;
+  const successfulItem = Array.isArray(successfulItems) && successfulItems.length > 0
+    ? asRecord(successfulItems[0])
+    : undefined;
+
+  const courierOrderId = stringValue(
+    successfulItem?.orderNumber ?? firstValue(sources, ['orderNumber', 'order_number', 'orderId', 'order_id'])
+  ) ?? input.courier_order_id ?? input.tracking_number;
+
+  const trackingNumber = stringValue(
+    successfulItem?.awbNumber ?? firstValue(sources, ['awbNumber', 'awb_number', 'awb', 'tracking_number'])
+  ) ?? input.tracking_number;
+
+  if (successfulItem || (root?.status && String(root.status).toLowerCase() === 'success')) {
+    return {
+      response: {
+        order_id: courierOrderId,
+        courier_partner: URBANEBOLT_COURIER_PARTNER,
+        tracking_number: trackingNumber,
+        status: 'CANCELLED'
+      },
+      raw_response: rawResponsePayload
+    };
+  }
+
+  const failureItems = root?.failureResponse ?? root?.errorResponse ?? root?.errors;
+  const failureItem = Array.isArray(failureItems) && failureItems.length > 0
+    ? asRecord(failureItems[0])
+    : undefined;
+
+  const failureMsg = stringValue(
+    failureItem?.message ?? failureItem?.error ?? failureItem?.reason ?? root?.message ?? root?.error
+  );
+
+  if (failureMsg && isAlreadyCancelledMessage(failureMsg)) {
+    return {
+      response: {
+        order_id: courierOrderId,
+        courier_partner: URBANEBOLT_COURIER_PARTNER,
+        tracking_number: trackingNumber,
+        status: 'CANCELLED'
+      },
+      raw_response: rawResponsePayload
+    };
+  }
+
+  throw new CourierProviderError({
+    operation: 'cancel',
+    kind: 'client',
+    message: failureMsg ?? 'Courier cancel response did not contain a successful cancellation',
+    retryable: false,
+    rawRequestPayload,
+    rawResponsePayload
+  });
+}
+
 function defaultAdapterOptions(): UrbaneBoltAdapterOptions {
   return {
     config: {
@@ -570,7 +645,25 @@ export class UrbaneBoltAdapter implements CourierAdapter {
     return mapTrackResponse(input, result.response.payload);
   }
 
-  async cancelShipment(_input: CancelShipmentInput): Promise<CourierCancelResult> {
-    throw operationNotImplemented('cancel');
+  async cancelShipment(input: CancelShipmentInput): Promise<CourierCancelResult> {
+    if (typeof input.tracking_number !== 'string' || input.tracking_number.trim().length === 0) {
+      throw new CourierProviderError({
+        operation: 'cancel',
+        kind: 'client',
+        message: 'UrbaneBolt cancel request requires tracking_number',
+        retryable: false
+      });
+    }
+
+    const payload = { awbs: input.tracking_number.trim() };
+    const result = await this.authenticatedRequest<unknown>({
+      operation: 'cancel',
+      method: 'POST',
+      url: `${this.config.baseUrl.replace(/\/+$/, '')}${CANCEL_SHIPMENT_PATH}`,
+      payload,
+      timeoutMs: this.config.requestTimeoutMs
+    });
+
+    return mapCancelResponse(input, result.request.payload, result.response.payload);
   }
 }
