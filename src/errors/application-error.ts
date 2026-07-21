@@ -62,9 +62,30 @@ export class UnknownCourierError extends ApplicationError {
   }
 }
 
+export class OrderIdConflictError extends ApplicationError {
+  constructor(orderId: string) {
+    super(
+      'ORDER_ID_CONFLICT',
+      `Order ID '${orderId}' has already been used with different request parameters`
+    );
+    this.name = 'OrderIdConflictError';
+  }
+}
+
+export class OrderInProgressError extends ApplicationError {
+  constructor(orderId: string) {
+    super(
+      'ORDER_IN_PROGRESS',
+      `Order creation is already in progress for order ID '${orderId}'`
+    );
+    this.name = 'OrderInProgressError';
+  }
+}
+
 export class InternalError extends ApplicationError {
   constructor() {
     super('INTERNAL_ERROR', 'An unexpected error occurred');
     this.name = 'InternalError';
   }
 }
+
