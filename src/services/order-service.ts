@@ -295,23 +295,14 @@ export function createOrderService(
                 status_at: trackResult.response.status_updated_at
               }];
 
-          for (const evt of eventsToPersist) {
-            try {
-              await trackingHistoryRepository.insertHistoryEvent(
-                {
-                  orderId: order.id,
-                  status: evt.status,
-                  statusAt: new Date(evt.status_at),
-                  rawPayload: trackResult.raw_response
-                },
-                trx
-              );
-            } catch (err: any) {
-              if (err?.code !== '23505') {
-                throw err;
-              }
-            }
-          }
+          const historyInputs = eventsToPersist.map((evt) => ({
+            orderId: order.id,
+            status: evt.status,
+            statusAt: new Date(evt.status_at),
+            rawPayload: trackResult.raw_response
+          }));
+
+          await trackingHistoryRepository.insertHistoryEvents(historyInputs, trx);
         }
       });
 

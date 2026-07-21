@@ -53,13 +53,15 @@ describe('Order Service Tracking Flow (P5-T1)', () => {
     };
 
     const mockHistoryRepo: Partial<HistoryRepo> = {
-      insertHistoryEvent: vi.fn().mockResolvedValue({
-        id: '1',
-        order_id: '100',
-        status: 'IN_TRANSIT',
-        status_at: new Date(),
-        raw_payload: { status: 'IN_TRANSIT' }
-      })
+      insertHistoryEvents: vi.fn().mockResolvedValue([
+        {
+          id: '1',
+          order_id: '100',
+          status: 'IN_TRANSIT',
+          status_at: new Date(),
+          raw_payload: { status: 'IN_TRANSIT' }
+        }
+      ])
     };
 
     const trackResult: CourierTrackResult = {
@@ -112,13 +114,15 @@ describe('Order Service Tracking Flow (P5-T1)', () => {
       },
       undefined
     );
-    expect(mockHistoryRepo.insertHistoryEvent).toHaveBeenCalledWith(
-      {
-        orderId: '100',
-        status: 'IN_TRANSIT',
-        statusAt: new Date('2026-07-21T10:00:00.000Z'),
-        rawPayload: { raw: 'data' }
-      },
+    expect(mockHistoryRepo.insertHistoryEvents).toHaveBeenCalledWith(
+      [
+        {
+          orderId: '100',
+          status: 'IN_TRANSIT',
+          statusAt: new Date('2026-07-21T10:00:00.000Z'),
+          rawPayload: { raw: 'data' }
+        }
+      ],
       undefined
     );
 
@@ -182,17 +186,14 @@ describe('Order Service Tracking Flow (P5-T1)', () => {
     expect(mockRegistry.resolve).not.toHaveBeenCalled();
   });
 
-  it('handles duplicate history event error (code 23505) gracefully without failing tracking operation', async () => {
+  it('handles duplicate history event gracefully without failing tracking operation', async () => {
     const mockOrderRepo: Partial<OrderRepo> = {
       findActiveOrderByMerchantOrderId: vi.fn().mockResolvedValue(mockOrder),
       updateCurrentState: vi.fn().mockResolvedValue(mockOrder)
     };
 
-    const duplicateError: any = new Error('duplicate key value violates unique constraint');
-    duplicateError.code = '23505';
-
     const mockHistoryRepo: Partial<HistoryRepo> = {
-      insertHistoryEvent: vi.fn().mockRejectedValue(duplicateError)
+      insertHistoryEvents: vi.fn().mockResolvedValue([])
     };
 
     const trackResult: CourierTrackResult = {
