@@ -6,7 +6,9 @@ import type {
   CourierTrackResult,
   CourierAuthenticationResult,
   CreateOrderRequest,
-  TrackShipmentInput
+  NormalizedStatus,
+  TrackShipmentInput,
+  TrackingEvent
 } from '../../domain/contracts.js';
 import { config as appConfig } from '../../config.js';
 import {
@@ -24,6 +26,7 @@ import {
 export const URBANEBOLT_COURIER_PARTNER = 'urbanebolt';
 const AUTHENTICATION_PATH = '/api/v1/auth/getToken/';
 const CREATE_SHIPMENT_PATH = '/api/v1/services/manifest/';
+const TRACK_SHIPMENT_PATH = '/api/v1/services/tracking-pub/';
 
 export type UrbaneBoltAdapterConfig = {
   baseUrl: string;
@@ -134,6 +137,191 @@ function mapCreateResponse(
   };
 }
 
+export function mapUrbaneBoltStatus(rawStatus: unknown): NormalizedStatus {
+  if (typeof rawStatus !== 'string' && typeof rawStatus !== 'number') {
+    return 'UNKNOWN';
+  }
+
+  const normalized = String(rawStatus).trim().toUpperCase().replace(/[\s_-]+/g, '_');
+
+  switch (normalized) {
+    case 'CREATED':
+    case 'MANIFESTED':
+    case 'BOOKED':
+    case 'NEW':
+    case 'ORDER_CREATED':
+      return 'CREATED';
+
+    case 'PICKED_UP':
+    case 'PICKUP':
+    case 'PICKED':
+    case 'OUT_FOR_PICKUP':
+    case 'PU':
+      return 'PICKED_UP';
+
+    case 'IN_TRANSIT':
+    case 'IN_TRANSIT_LOCATION':
+    case 'TRANSIT':
+    case 'DISPATCHED':
+    case 'OUT_FOR_DELIVERY':
+    case 'REACHED_HUB':
+    case 'HUB_REACHED':
+      return 'IN_TRANSIT';
+
+    case 'DELIVERED':
+    case 'DLVD':
+    case 'COMPLETED':
+      return 'DELIVERED';
+
+    case 'CANCELLED':
+    case 'CANCELED':
+    case 'CANCEL':
+    case 'CNCL':
+      return 'CANCELLED';
+
+    case 'FAILED':
+    case 'FAILURE':
+    case 'UNDELIVERED':
+    case 'RTO':
+    case 'RETURNED':
+    case 'REJECTED':
+      return 'FAILED';
+
+    default:
+      return 'UNKNOWN';
+  }
+}
+
+function parseIsoDateString(value: unknown): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number') {
+    const timestamp = typeof value === 'number'
+      ? (value > 1_000_000_000_000 ? value : value * 1000)
+      : Date.parse(value);
+    const parsed = new Date(timestamp);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return undefined;
+}
+
+function mapTrackingEvent(scanPayload: unknown, fallbackStatusAt: string): TrackingEvent | undefined {
+  const scan = asRecord(scanPayload);
+  if (!scan) {
+    return undefined;
+  }
+
+  const rawStatus = firstValue([scan], [
+    'status',
+    'statusCode',
+    'status_code',
+    'scanType',
+    'scan_type',
+    'activity',
+    'event'
+  ]);
+  const status = mapUrbaneBoltStatus(rawStatus);
+
+  const rawDate = firstValue([scan], [
+    'date',
+    'scanDate',
+    'scan_date',
+    'statusDate',
+    'status_date',
+    'timestamp',
+    'time',
+    'updatedAt',
+    'updated_at'
+  ]);
+  const status_at = parseIsoDateString(rawDate) ?? fallbackStatusAt;
+
+  const location = stringValue(
+    firstValue([scan], ['location', 'scanLocation', 'scan_location', 'city', 'hub'])
+  );
+
+  const description = stringValue(
+    firstValue([scan], ['description', 'remarks', 'message', 'instructions', 'scanDescription', 'scan_description'])
+  );
+
+  return {
+    status,
+    status_at,
+    ...(location === undefined ? {} : { location }),
+    ...(description === undefined ? {} : { description })
+  };
+}
+
+function mapTrackResponse(
+  input: TrackShipmentInput,
+  rawResponsePayload: unknown
+): CourierTrackResult {
+  const sources = responseSources(rawResponsePayload);
+
+  const orderId = stringValue(
+    firstValue(sources, ['orderNumber', 'order_number', 'orderId', 'order_id', 'merchant_order_id'])
+  ) ?? input.courier_order_id ?? input.tracking_number;
+
+  const trackingNumber = stringValue(
+    firstValue(sources, ['awbNumber', 'awb_number', 'awb', 'tracking_number', 'trackingNumber'])
+  ) ?? input.tracking_number;
+
+  const rawStatus = firstValue(sources, [
+    'status',
+    'statusCode',
+    'status_code',
+    'currentStatus',
+    'current_status',
+    'shipmentStatus',
+    'shipment_status',
+    'state'
+  ]);
+
+  const status = mapUrbaneBoltStatus(rawStatus);
+
+  const rawUpdatedAt = firstValue(sources, [
+    'status_updated_at',
+    'statusUpdatedAt',
+    'statusDate',
+    'status_date',
+    'updatedAt',
+    'updated_at',
+    'timestamp',
+    'date'
+  ]);
+  const status_updated_at = parseIsoDateString(rawUpdatedAt) ?? new Date().toISOString();
+
+  let scansArray: unknown[] | undefined;
+  for (const source of sources) {
+    const candidate = firstValue([source], ['scans', 'scan_history', 'history', 'events', 'tracking_history']);
+    if (Array.isArray(candidate)) {
+      scansArray = candidate;
+      break;
+    }
+  }
+
+  const events: TrackingEvent[] = [];
+  if (Array.isArray(scansArray)) {
+    for (const scanItem of scansArray) {
+      const event = mapTrackingEvent(scanItem, status_updated_at);
+      if (event) {
+        events.push(event);
+      }
+    }
+  }
+
+  return {
+    response: {
+      order_id: orderId,
+      courier_partner: URBANEBOLT_COURIER_PARTNER,
+      tracking_number: trackingNumber,
+      status,
+      status_updated_at,
+      events
+    },
+    raw_response: rawResponsePayload
+  };
+}
+
 function defaultAdapterOptions(): UrbaneBoltAdapterOptions {
   return {
     config: {
@@ -179,7 +367,7 @@ function responseSources(payload: unknown): Record<string, unknown>[] {
     return [];
   }
 
-  return nested ? [root, nested] : [root];
+  return nested ? [nested, root] : [root];
 }
 
 function expirationDate(payload: unknown): Date | undefined {
@@ -358,8 +546,28 @@ export class UrbaneBoltAdapter implements CourierAdapter {
     return mapCreateResponse(request, result.request.payload, result.response.payload);
   }
 
-  async trackShipment(_input: TrackShipmentInput): Promise<CourierTrackResult> {
-    throw operationNotImplemented('track');
+  async trackShipment(input: TrackShipmentInput): Promise<CourierTrackResult> {
+    if (typeof input.tracking_number !== 'string' || input.tracking_number.trim().length === 0) {
+      throw new CourierProviderError({
+        operation: 'track',
+        kind: 'client',
+        message: 'UrbaneBolt track request requires tracking_number',
+        retryable: false
+      });
+    }
+
+    const url = `${this.config.baseUrl.replace(/\/+$/, '')}${TRACK_SHIPMENT_PATH}?awb=${encodeURIComponent(
+      input.tracking_number.trim()
+    )}`;
+
+    const result = await this.authenticatedRequest<unknown>({
+      operation: 'track',
+      method: 'GET',
+      url,
+      timeoutMs: this.config.requestTimeoutMs
+    });
+
+    return mapTrackResponse(input, result.response.payload);
   }
 
   async cancelShipment(_input: CancelShipmentInput): Promise<CourierCancelResult> {
