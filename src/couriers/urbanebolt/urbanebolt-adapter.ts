@@ -22,6 +22,7 @@ import {
   type ProviderHttpRequestOptions,
   type ProviderHttpResult
 } from '../provider-http-client.js';
+import { withRetry } from '../retry-helper.js';
 
 export const URBANEBOLT_COURIER_PARTNER = 'urbanebolt';
 const AUTHENTICATION_PATH = '/api/v1/auth/getToken/';
@@ -34,11 +35,14 @@ export type UrbaneBoltAdapterConfig = {
   username: string;
   password: string;
   requestTimeoutMs: number;
+  retryCount?: number;
+  retryDelayMs?: number;
 };
 
 export type UrbaneBoltAdapterOptions = {
   config: UrbaneBoltAdapterConfig;
   httpClient?: ProviderHttpClient;
+  sleepFn?: (ms: number) => Promise<void>;
 };
 
 type AuthenticatedRequestOptions = Omit<ProviderHttpRequestOptions, 'headers'> & {
@@ -403,7 +407,9 @@ function defaultAdapterOptions(): UrbaneBoltAdapterOptions {
       baseUrl: appConfig.urbanebolt.baseUrl,
       username: appConfig.urbanebolt.username,
       password: appConfig.urbanebolt.password,
-      requestTimeoutMs: appConfig.requestTimeoutMs
+      requestTimeoutMs: appConfig.requestTimeoutMs,
+      retryCount: appConfig.retryCount,
+      retryDelayMs: appConfig.retryDelayMs
     },
     httpClient: requestProviderJson
   };
@@ -518,12 +524,14 @@ export class UrbaneBoltAdapter implements CourierAdapter {
   readonly courierPartner = URBANEBOLT_COURIER_PARTNER;
   private readonly config: UrbaneBoltAdapterConfig;
   private readonly httpClient: ProviderHttpClient;
+  private readonly sleepFn?: (ms: number) => Promise<void>;
   private cachedAuthentication?: CourierAuthenticationResult;
   private authenticationInFlight?: Promise<CourierAuthenticationResult>;
 
   constructor(options: UrbaneBoltAdapterOptions = defaultAdapterOptions()) {
     this.config = options.config;
     this.httpClient = options.httpClient ?? requestProviderJson;
+    this.sleepFn = options.sleepFn;
   }
 
   private async authenticate(): Promise<CourierAuthenticationResult> {
@@ -581,30 +589,41 @@ export class UrbaneBoltAdapter implements CourierAdapter {
   private async authenticatedRequest<TPayload>(
     options: AuthenticatedRequestOptions
   ): Promise<ProviderHttpResult<TPayload>> {
-    const authentication = await this.getAuthentication();
-    const sendRequest = async (token: CourierAuthenticationResult) => {
-      const result = await this.httpClient({
-        ...options,
-        headers: {
-          ...options.headers,
-          authorization: `${token.token_type} ${token.access_token}`
-        }
-      });
+    const retryCount = this.config.retryCount ?? appConfig.retryCount;
+    const retryDelayMs = this.config.retryDelayMs ?? appConfig.retryDelayMs;
 
-      return result as ProviderHttpResult<TPayload>;
+    const executeCall = async () => {
+      const authentication = await this.getAuthentication();
+      const sendRequest = async (token: CourierAuthenticationResult) => {
+        const result = await this.httpClient({
+          ...options,
+          headers: {
+            ...options.headers,
+            authorization: `${token.token_type} ${token.access_token}`
+          }
+        });
+
+        return result as ProviderHttpResult<TPayload>;
+      };
+
+      try {
+        return await sendRequest(authentication);
+      } catch (error) {
+        if (!isAuthenticationRejection(error)) {
+          throw error;
+        }
+
+        this.cachedAuthentication = undefined;
+        const refreshedAuthentication = await this.getAuthentication();
+        return sendRequest(refreshedAuthentication);
+      }
     };
 
-    try {
-      return await sendRequest(authentication);
-    } catch (error) {
-      if (!isAuthenticationRejection(error)) {
-        throw error;
-      }
-
-      this.cachedAuthentication = undefined;
-      const refreshedAuthentication = await this.getAuthentication();
-      return sendRequest(refreshedAuthentication);
-    }
+    return withRetry(executeCall, {
+      maxRetries: retryCount,
+      initialDelayMs: retryDelayMs,
+      sleep: this.sleepFn
+    });
   }
 
   async createShipment(request: CreateOrderRequest): Promise<CourierCreateResult> {
