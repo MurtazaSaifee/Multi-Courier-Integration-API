@@ -1,8 +1,12 @@
 import express, { type Express } from 'express';
 
+import { errorHandler } from './http/error-handler.js';
+import { requestIdMiddleware } from './http/request-id.js';
+
 export function createApp(): Express {
   const app = express();
 
+  app.use(requestIdMiddleware);
   app.use(express.json());
 
   app.get('/health', (_request, response) => {
@@ -17,6 +21,8 @@ export function createApp(): Express {
       }
     });
   });
+
+  app.use(errorHandler);
 
   return app;
 }
