@@ -32,6 +32,10 @@ export type ProviderHttpResult<TPayload> = {
   response: ProviderHttpResponse<TPayload>;
 };
 
+export type ProviderHttpClient = (
+  options: ProviderHttpRequestOptions
+) => Promise<ProviderHttpResult<unknown>>;
+
 async function readResponsePayload(response: Response): Promise<unknown> {
   const text = await response.text();
 
@@ -48,7 +52,7 @@ async function readResponsePayload(response: Response): Promise<unknown> {
 
 function providerError(
   options: ProviderHttpRequestOptions,
-  kind: 'client' | 'server' | 'network' | 'timeout',
+  kind: 'authentication' | 'client' | 'server' | 'network' | 'timeout',
   message: string,
   responsePayload?: unknown,
   statusCode?: number
@@ -94,10 +98,13 @@ export async function requestProviderJson<TPayload = unknown>(
 
     if (!response.ok) {
       const isServerFailure = response.status >= 500;
+      const isAuthenticationFailure = response.status === 401 || response.status === 403;
       throw providerError(
         options,
-        isServerFailure ? 'server' : 'client',
-        isServerFailure
+        isAuthenticationFailure ? 'authentication' : isServerFailure ? 'server' : 'client',
+        isAuthenticationFailure
+          ? 'Courier provider authentication was rejected'
+          : isServerFailure
           ? 'Courier provider returned a server error'
           : 'Courier provider rejected the request',
         responsePayload,

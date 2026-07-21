@@ -7,7 +7,7 @@ import type {
   TrackShipmentInput
 } from '../domain/contracts.js';
 
-export type CourierOperation = 'create' | 'track' | 'cancel';
+export type CourierOperation = 'authenticate' | 'create' | 'track' | 'cancel';
 
 export type CourierFailureKind =
   | 'authentication'
