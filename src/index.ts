@@ -1,8 +1,3 @@
-import './config.js';
+import { startServer } from './server.js';
 
-/**
- * Service entry point.
- *
- * HTTP application startup is added in the Express foundation task.
- */
-export {};
+startServer();
