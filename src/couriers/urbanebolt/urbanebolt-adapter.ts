@@ -431,7 +431,10 @@ function firstValue(
 }
 
 function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function responseSources(payload: unknown): Record<string, unknown>[] {

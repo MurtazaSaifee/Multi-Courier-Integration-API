@@ -274,6 +274,28 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
         rawResponsePayload: rawResponse
       });
     });
+
+    it('maps numeric orderNumber and awbNumber from provider into string values', async () => {
+      const rawResponse = {
+        status: 'Success',
+        successResponse: [{ orderNumber: 998877, awbNumber: 11223344 }]
+      };
+
+      const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (
+        requestResult(
+          options,
+          options.operation === 'authenticate'
+            ? { access_token: 'token', token_type: 'Bearer', expires_in: 3600 }
+            : rawResponse
+        )
+      ));
+
+      const adapter = new UrbaneBoltAdapter({ config: urbaneBoltTestConfig, httpClient });
+      const result = await adapter.createShipment(createRequest);
+
+      expect(result.response.courier_order_id).toBe('998877');
+      expect(result.response.tracking_number).toBe('11223344');
+    });
   });
 
   describe('Track Shipment Mapping and Raw Payload Capture', () => {
