@@ -130,7 +130,7 @@ describe('UrbaneBolt cancellation mapping', () => {
 
   it('throws CourierProviderError when cancellation is rejected by provider', async () => {
     const rawResponse = {
-      status: 'Error',
+      status: 'Success',
       successResponse: [],
       failureResponse: [
         {

@@ -354,7 +354,7 @@ function mapCancelResponse(
     successfulItem?.awbNumber ?? firstValue(sources, ['awbNumber', 'awb_number', 'awb', 'tracking_number'])
   ) ?? input.tracking_number;
 
-  if (successfulItem || (root?.status && String(root.status).toLowerCase() === 'success')) {
+  if (successfulItem) {
     return {
       response: {
         order_id: courierOrderId,
