@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 
-dotenv.config({ quiet: true });
+dotenv.config({ override: true, quiet: true });
 
 const requiredEnvironmentVariables = [
   'DATABASE_URL',

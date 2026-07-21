@@ -12,7 +12,9 @@
     "test": "vitest run --passWithNoTests",
     "db:check": "tsx src/db/check.ts",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:rollback": "tsx src/db/rollback.ts"
+    "db:rollback": "tsx src/db/rollback.ts",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
   },
   "engines": {
     "node": ">=20"
