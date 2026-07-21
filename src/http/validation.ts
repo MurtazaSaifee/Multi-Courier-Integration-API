@@ -1,7 +1,12 @@
 import { z } from 'zod';
 
-import type { ErrorDetail } from '../domain/contracts.js';
+import type {
+  BulkOrderFailure,
+  CreateOrderRequest,
+  ErrorDetail
+} from '../domain/contracts.js';
 import { ValidationError } from '../errors/application-error.js';
+import { createOrderRequestSchema } from './schemas.js';
 
 export function zodIssuesToDetails(error: z.ZodError): ErrorDetail[] {
   return error.issues.map((issue) => ({
@@ -23,3 +28,68 @@ export function validateBody(schema: z.ZodType): import('express').RequestHandle
     next();
   };
 }
+
+export type BulkItemValidationResult =
+  | { valid: true; item: CreateOrderRequest }
+  | { valid: false; order_id: string; failure: BulkOrderFailure };
+
+export function validateBulkOrders(
+  body: unknown,
+  requestId: string
+): BulkItemValidationResult[] {
+  if (!Array.isArray(body)) {
+    throw new ValidationError([
+      { field: 'request', message: 'Bulk request body must be an array of order items' }
+    ]);
+  }
+
+  if (body.length === 0) {
+    throw new ValidationError([
+      { field: 'request', message: 'Bulk request body must contain at least 1 order item' }
+    ]);
+  }
+
+  if (body.length > 100) {
+    throw new ValidationError([
+      { field: 'request', message: 'Bulk request cannot exceed 100 orders' }
+    ]);
+  }
+
+  return body.map((item, index) => {
+    const result = createOrderRequestSchema.safeParse(item);
+    if (result.success) {
+      return {
+        valid: true,
+        item: result.data as CreateOrderRequest
+      };
+    }
+
+    const itemRecord =
+      typeof item === 'object' && item !== null
+        ? (item as Record<string, unknown>)
+        : null;
+
+    const rawId =
+      itemRecord &&
+      typeof itemRecord.order_id === 'string' &&
+      itemRecord.order_id.trim().length > 0
+        ? itemRecord.order_id.trim()
+        : `item_${index + 1}`;
+
+    return {
+      valid: false,
+      order_id: rawId,
+      failure: {
+        order_id: rawId,
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Request validation failed',
+          details: zodIssuesToDetails(result.error),
+          request_id: requestId
+        }
+      }
+    };
+  });
+}
+
