@@ -8,9 +8,11 @@ import {
 } from '../couriers/courier-registry.js';
 import { CourierProviderError } from '../couriers/courier-adapter.js';
 import type {
+  CourierTrackResult,
   CreateOrderRequest,
   CreateOrderResponse,
-  OrderRecord
+  OrderRecord,
+  TrackOrderResponse
 } from '../domain/contracts.js';
 import {
   ApplicationError,
@@ -19,7 +21,9 @@ import {
   CourierUnavailableError,
   mapCourierProviderError,
   OrderIdConflictError,
-  OrderInProgressError
+  OrderInProgressError,
+  OrderNotFoundError,
+  ValidationError
 } from '../errors/application-error.js';
 
 export type OrderRepository = ReturnType<typeof createOrderRepository>;
@@ -241,6 +245,80 @@ export function createOrderService(
 
         throw error;
       }
+    },
+
+    async trackOrder(merchantOrderId: string): Promise<TrackOrderResponse> {
+      const order = await orderRepository.findActiveOrderByMerchantOrderId(merchantOrderId);
+      if (!order) {
+        throw new OrderNotFoundError(merchantOrderId);
+      }
+
+      if (!order.tracking_number) {
+        throw new ValidationError([
+          {
+            field: 'tracking_number',
+            message: `Order '${merchantOrderId}' does not have a tracking number to track`
+          }
+        ]);
+      }
+
+      const adapter = registry.resolve(order.courier_partner);
+      let trackResult: CourierTrackResult;
+
+      try {
+        trackResult = await adapter.trackShipment({
+          courier_order_id: order.courier_order_id,
+          tracking_number: order.tracking_number
+        });
+      } catch (error: any) {
+        if (error instanceof CourierProviderError) {
+          throw mapCourierProviderError(error);
+        }
+        throw error;
+      }
+
+      await withTransaction(async (trx) => {
+        await orderRepository.updateCurrentState(
+          order.id,
+          {
+            status: trackResult.response.status,
+            courierResponsePayload: trackResult.raw_response
+          },
+          trx
+        );
+
+        if (trackingHistoryRepository) {
+          const eventsToPersist = trackResult.response.events.length > 0
+            ? trackResult.response.events
+            : [{
+                status: trackResult.response.status,
+                status_at: trackResult.response.status_updated_at
+              }];
+
+          for (const evt of eventsToPersist) {
+            try {
+              await trackingHistoryRepository.insertHistoryEvent(
+                {
+                  orderId: order.id,
+                  status: evt.status,
+                  statusAt: new Date(evt.status_at),
+                  rawPayload: trackResult.raw_response
+                },
+                trx
+              );
+            } catch (err: any) {
+              if (err?.code !== '23505') {
+                throw err;
+              }
+            }
+          }
+        }
+      });
+
+      return {
+        ...trackResult.response,
+        order_id: order.merchant_order_id
+      };
     }
   };
 }

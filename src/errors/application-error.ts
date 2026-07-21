@@ -49,6 +49,13 @@ export class ValidationError extends ApplicationError {
   }
 }
 
+export class OrderNotFoundError extends ApplicationError {
+  constructor(orderId: string) {
+    super('ORDER_NOT_FOUND', `Order '${orderId}' was not found`);
+    this.name = 'OrderNotFoundError';
+  }
+}
+
 export class UnknownCourierError extends ApplicationError {
   constructor(supportedCouriers: readonly string[]) {
     super('UNKNOWN_COURIER', 'Courier partner is not supported', [
