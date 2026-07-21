@@ -15,8 +15,9 @@ type HistoryEventInput = {
 
 export function createTrackingHistoryRepository(database: Knex) {
   return {
-    async insertHistoryEvent(input: HistoryEventInput): Promise<TrackingHistoryRecord> {
-      const [event] = await database<TrackingHistoryRecord>('tracking_history')
+    async insertHistoryEvent(input: HistoryEventInput, trx?: Knex): Promise<TrackingHistoryRecord> {
+      const q = (trx ?? database)<TrackingHistoryRecord>('tracking_history');
+      const [event] = await q
         .insert({
           order_id: input.orderId,
           status: input.status,

@@ -33,8 +33,9 @@ function activeOrders(database: Knex) {
 
 export function createOrderRepository(database: Knex) {
   return {
-    async insertPendingOrder(input: PendingOrderInput): Promise<OrderRecord> {
-      const [order] = await database<OrderRecord>('orders')
+    async insertPendingOrder(input: PendingOrderInput, trx?: Knex): Promise<OrderRecord> {
+      const q = (trx ?? database)<OrderRecord>('orders');
+      const [order] = await q
         .insert({
           merchant_order_id: input.merchantOrderId,
           courier_partner: input.courierPartner,
@@ -67,7 +68,8 @@ export function createOrderRepository(database: Knex) {
 
     async updateCurrentState(
       orderId: string | number,
-      state: CurrentStateUpdate
+      state: CurrentStateUpdate,
+      trx?: Knex
     ): Promise<OrderRecord | undefined> {
       const changes: Record<string, unknown> = {
         status: state.status,
@@ -99,7 +101,8 @@ export function createOrderRepository(database: Knex) {
         changes.deleted_at = state.deletedAt;
       }
 
-      const [order] = await database<OrderRecord>('orders')
+      const q = (trx ?? database)<OrderRecord>('orders');
+      const [order] = await q
         .where('id', orderId)
         .update(changes)
         .returning('*');

@@ -104,14 +104,14 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
       trackingNumber: 'AWB-2002',
       courierRequestPayload: [{ payload: 'raw_req' }],
       courierResponsePayload: { success: true }
-    });
+    }, undefined);
 
     expect(mockHistoryRepo.insertHistoryEvent).toHaveBeenCalledWith({
       orderId: '10',
       status: 'CREATED',
       statusAt: expect.any(Date),
       rawPayload: { success: true }
-    });
+    }, undefined);
   });
 
   it('persists a graceful FAILED state and tracking history when courier call fails', async () => {
@@ -186,14 +186,14 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
       failureMessage: 'Invalid pincode',
       courierRequestPayload: { sent: 'data' },
       courierResponsePayload: { errorResponse: [{ message: 'Invalid pincode' }] }
-    });
+    }, undefined);
 
     expect(mockHistoryRepo.insertHistoryEvent).toHaveBeenCalledWith({
       orderId: '10',
       status: 'FAILED',
       statusAt: expect.any(Date),
       rawPayload: { errorResponse: [{ message: 'Invalid pincode' }] }
-    });
+    }, undefined);
   });
 
   it('returns stored response directly for an already completed order without calling courier', async () => {
@@ -245,5 +245,69 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
     });
 
     expect(mockAdapter.createShipment).not.toHaveBeenCalled();
+  });
+
+  it('maps resubmitted failed order error code to CourierUnavailableError when failure_code is SERVER or TIMEOUT', async () => {
+    const failedRecord: OrderRecord = {
+      id: '10',
+      merchant_order_id: 'ORDER-2002',
+      courier_partner: 'urbanebolt',
+      courier_order_id: null,
+      tracking_number: null,
+      status: 'FAILED',
+      normalized_request: sampleRequest,
+      courier_request_payload: {},
+      courier_response_payload: {},
+      failure_code: 'SERVER',
+      failure_message: 'Courier connection timed out',
+      is_deleted: false,
+      deleted_at: null,
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+
+    const mockOrderRepo: Partial<OrderRepo> = {
+      findByMerchantOrderId: vi.fn().mockResolvedValue(failedRecord)
+    };
+
+    const service = createOrderService(mockOrderRepo as OrderRepo);
+
+    await expect(service.createOrder(sampleRequest)).rejects.toMatchObject({
+      code: 'COURIER_UNAVAILABLE',
+      statusCode: 503,
+      message: 'Courier connection timed out'
+    });
+  });
+
+  it('maps resubmitted failed order error code to CourierAuthFailedError when failure_code is AUTHENTICATION', async () => {
+    const failedRecord: OrderRecord = {
+      id: '10',
+      merchant_order_id: 'ORDER-2002',
+      courier_partner: 'urbanebolt',
+      courier_order_id: null,
+      tracking_number: null,
+      status: 'FAILED',
+      normalized_request: sampleRequest,
+      courier_request_payload: {},
+      courier_response_payload: {},
+      failure_code: 'AUTHENTICATION',
+      failure_message: 'Invalid credentials',
+      is_deleted: false,
+      deleted_at: null,
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+
+    const mockOrderRepo: Partial<OrderRepo> = {
+      findByMerchantOrderId: vi.fn().mockResolvedValue(failedRecord)
+    };
+
+    const service = createOrderService(mockOrderRepo as OrderRepo);
+
+    await expect(service.createOrder(sampleRequest)).rejects.toMatchObject({
+      code: 'COURIER_AUTH_FAILED',
+      statusCode: 502,
+      message: 'Invalid credentials'
+    });
   });
 });

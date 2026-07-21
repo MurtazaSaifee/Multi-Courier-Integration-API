@@ -206,6 +206,20 @@ describe('Order Service Reservation and Idempotency Flow', () => {
     await expect(service.reserveOrder(sampleRequest)).rejects.toThrow(OrderInProgressError);
   });
 
+  it('throws OrderInProgressError if 23505 occurs and concurrent lookup returns undefined', async () => {
+    const dbError = new Error('duplicate key value violates unique constraint') as any;
+    dbError.code = '23505';
+
+    const mockRepo: Partial<OrderRepo> = {
+      findByMerchantOrderId: vi.fn().mockResolvedValue(undefined),
+      insertPendingOrder: vi.fn().mockRejectedValue(dbError)
+    };
+
+    const service = createOrderService(mockRepo as OrderRepo);
+
+    await expect(service.reserveOrder(sampleRequest)).rejects.toThrow(OrderInProgressError);
+  });
+
   it('correctly assesses deep equality of request objects regardless of key order', () => {
     const req1 = {
       a: 1,

@@ -1,3 +1,5 @@
+import type { Knex } from 'knex';
+
 import type { createOrderRepository } from '../db/repositories/order-repository.js';
 import type { createTrackingHistoryRepository } from '../db/repositories/tracking-history-repository.js';
 import {
@@ -12,6 +14,9 @@ import type {
 } from '../domain/contracts.js';
 import {
   ApplicationError,
+  CourierAuthFailedError,
+  CourierRejectedError,
+  CourierUnavailableError,
   mapCourierProviderError,
   OrderIdConflictError,
   OrderInProgressError
@@ -62,8 +67,16 @@ export function buildCreateOrderResponse(order: OrderRecord): CreateOrderRespons
 export function createOrderService(
   orderRepository: OrderRepository,
   trackingHistoryRepository?: TrackingHistoryRepository,
-  registry: CourierRegistry = courierRegistry
+  registry: CourierRegistry = courierRegistry,
+  db?: Knex
 ) {
+  const withTransaction = async <T>(fn: (trx?: Knex) => Promise<T>): Promise<T> => {
+    if (db) {
+      return db.transaction((trx) => fn(trx));
+    }
+    return fn(undefined);
+  };
+
   return {
     async reserveOrder(request: CreateOrderRequest): Promise<ReservationResult> {
       const existing = await orderRepository.findByMerchantOrderId(request.order_id);
@@ -110,6 +123,7 @@ export function createOrderService(
               response: buildCreateOrderResponse(concurrentExisting)
             };
           }
+          throw new OrderInProgressError(request.order_id);
         }
         throw error;
       }
@@ -123,10 +137,23 @@ export function createOrderService(
           return reservation.response;
         }
         if (reservation.order.status === 'FAILED') {
-          throw new ApplicationError(
-            'COURIER_REJECTED',
-            reservation.order.failure_message || 'Order creation previously failed'
-          );
+          const failureCode = (reservation.order.failure_code || '').toUpperCase();
+          const failureMessage = reservation.order.failure_message || 'Order creation previously failed';
+
+          switch (failureCode) {
+            case 'AUTHENTICATION':
+            case 'COURIER_AUTH_FAILED':
+              throw new CourierAuthFailedError(failureMessage);
+            case 'SERVER':
+            case 'TIMEOUT':
+            case 'NETWORK':
+            case 'COURIER_UNAVAILABLE':
+              throw new CourierUnavailableError(failureMessage);
+            case 'CLIENT':
+            case 'COURIER_REJECTED':
+            default:
+              throw new CourierRejectedError(failureMessage);
+          }
         }
         const response = buildCreateOrderResponse(reservation.order);
         if (response) {
@@ -141,22 +168,31 @@ export function createOrderService(
       try {
         const result = await adapter.createShipment(request);
 
-        await orderRepository.updateCurrentState(order.id, {
-          status: result.response.status,
-          courierOrderId: result.response.courier_order_id,
-          trackingNumber: result.response.tracking_number,
-          courierRequestPayload: result.raw_request,
-          courierResponsePayload: result.raw_response
-        });
+        await withTransaction(async (trx) => {
+          await orderRepository.updateCurrentState(
+            order.id,
+            {
+              status: result.response.status,
+              courierOrderId: result.response.courier_order_id,
+              trackingNumber: result.response.tracking_number,
+              courierRequestPayload: result.raw_request,
+              courierResponsePayload: result.raw_response
+            },
+            trx
+          );
 
-        if (trackingHistoryRepository) {
-          await trackingHistoryRepository.insertHistoryEvent({
-            orderId: order.id,
-            status: result.response.status,
-            statusAt: new Date(),
-            rawPayload: result.raw_response
-          });
-        }
+          if (trackingHistoryRepository) {
+            await trackingHistoryRepository.insertHistoryEvent(
+              {
+                orderId: order.id,
+                status: result.response.status,
+                statusAt: new Date(),
+                rawPayload: result.raw_response
+              },
+              trx
+            );
+          }
+        });
 
         return result.response;
       } catch (error: any) {
@@ -174,22 +210,31 @@ export function createOrderService(
           ? error.rawResponsePayload
           : undefined;
 
-        await orderRepository.updateCurrentState(order.id, {
-          status: 'FAILED',
-          failureCode,
-          failureMessage,
-          ...(rawRequestPayload !== undefined ? { courierRequestPayload: rawRequestPayload } : {}),
-          ...(rawResponsePayload !== undefined ? { courierResponsePayload: rawResponsePayload } : {})
-        });
+        await withTransaction(async (trx) => {
+          await orderRepository.updateCurrentState(
+            order.id,
+            {
+              status: 'FAILED',
+              failureCode,
+              failureMessage,
+              ...(rawRequestPayload !== undefined ? { courierRequestPayload: rawRequestPayload } : {}),
+              ...(rawResponsePayload !== undefined ? { courierResponsePayload: rawResponsePayload } : {})
+            },
+            trx
+          );
 
-        if (trackingHistoryRepository) {
-          await trackingHistoryRepository.insertHistoryEvent({
-            orderId: order.id,
-            status: 'FAILED',
-            statusAt: new Date(),
-            rawPayload: rawResponsePayload ?? { error: failureMessage }
-          });
-        }
+          if (trackingHistoryRepository) {
+            await trackingHistoryRepository.insertHistoryEvent(
+              {
+                orderId: order.id,
+                status: 'FAILED',
+                statusAt: new Date(),
+                rawPayload: rawResponsePayload ?? { error: failureMessage }
+              },
+              trx
+            );
+          }
+        });
 
         if (error instanceof CourierProviderError) {
           throw mapCourierProviderError(error);

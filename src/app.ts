@@ -19,7 +19,8 @@ export function createApp(dependencies?: AppDependencies): Express {
   const orderService = dependencies?.orderService ?? createOrderService(
     createOrderRepository(db),
     createTrackingHistoryRepository(db),
-    courierRegistry
+    courierRegistry,
+    db
   );
 
   app.use(requestIdMiddleware);
