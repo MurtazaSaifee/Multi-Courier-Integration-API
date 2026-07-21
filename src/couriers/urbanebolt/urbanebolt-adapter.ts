@@ -1,4 +1,5 @@
 import type {
+  Address,
   CancelShipmentInput,
   CourierCancelResult,
   CourierCreateResult,
@@ -22,6 +23,7 @@ import {
 
 export const URBANEBOLT_COURIER_PARTNER = 'urbanebolt';
 const AUTHENTICATION_PATH = '/api/v1/auth/getToken/';
+const CREATE_SHIPMENT_PATH = '/api/v1/services/manifest/';
 
 export type UrbaneBoltAdapterConfig = {
   baseUrl: string;
@@ -38,6 +40,99 @@ export type UrbaneBoltAdapterOptions = {
 type AuthenticatedRequestOptions = Omit<ProviderHttpRequestOptions, 'headers'> & {
   headers?: Record<string, string>;
 };
+
+type UrbaneBoltManifestPayload = Record<string, unknown>;
+
+function mapAddress(prefix: 'shpr' | 'cons' | 'rtn', address: Address): UrbaneBoltManifestPayload {
+  return {
+    [`${prefix}Name`]: address.name,
+    [`${prefix}Phone`]: address.phone,
+    [`${prefix}Add`]: address.street,
+    [`${prefix}City`]: address.city,
+    [`${prefix}State`]: address.state,
+    [`${prefix}Country`]: address.country,
+    [`${prefix}Pincode`]: address.postal_code,
+    ...(address.email === undefined ? {} : { [`${prefix}Email`]: address.email })
+  };
+}
+
+function mapCreateRequest(request: CreateOrderRequest): UrbaneBoltManifestPayload {
+  return {
+    orderNumber: request.order_id,
+    serviceType: request.service_type,
+    ...mapAddress('shpr', request.sender),
+    ...mapAddress('cons', request.recipient),
+    ...(request.return_address === undefined ? {} : mapAddress('rtn', request.return_address)),
+    itemDescription: request.package.description,
+    pieces: request.package.pieces,
+    weight: request.package.weight,
+    ...(request.package.length === undefined ? {} : { length: request.package.length }),
+    ...(request.package.breadth === undefined ? {} : { breadth: request.package.breadth }),
+    ...(request.package.height === undefined ? {} : { height: request.package.height }),
+    paymentMode: request.payment.mode,
+    ...(request.payment.amount_to_collect === undefined
+      ? {}
+      : { codAmount: request.payment.amount_to_collect }),
+    ...(request.invoice === undefined ? {} : {
+      invoiceNumber: request.invoice.invoice_number,
+      invoiceDate: request.invoice.invoice_date,
+      invoiceValue: request.invoice.value
+    })
+  };
+}
+
+function invalidCreateRequest(message: string): CourierProviderError {
+  return new CourierProviderError({
+    operation: 'create',
+    kind: 'client',
+    message,
+    retryable: false
+  });
+}
+
+function createResponseMappingError(
+  rawRequestPayload: unknown,
+  rawResponsePayload: unknown
+): CourierProviderError {
+  return new CourierProviderError({
+    operation: 'create',
+    kind: 'client',
+    message: 'Courier create response did not contain a successful shipment',
+    retryable: false,
+    rawRequestPayload,
+    rawResponsePayload
+  });
+}
+
+function mapCreateResponse(
+  request: CreateOrderRequest,
+  rawRequestPayload: unknown,
+  rawResponsePayload: unknown
+): CourierCreateResult {
+  const response = asRecord(rawResponsePayload);
+  const successfulShipments = response?.successResponse;
+  const successfulShipment = Array.isArray(successfulShipments)
+    ? asRecord(successfulShipments[0])
+    : undefined;
+  const courierOrderId = stringValue(successfulShipment?.orderNumber);
+  const trackingNumber = stringValue(successfulShipment?.awbNumber);
+
+  if (!courierOrderId || !trackingNumber) {
+    throw createResponseMappingError(rawRequestPayload, rawResponsePayload);
+  }
+
+  return {
+    response: {
+      order_id: request.order_id,
+      courier_partner: request.courier_partner,
+      courier_order_id: courierOrderId,
+      tracking_number: trackingNumber,
+      status: 'CREATED'
+    },
+    raw_request: rawRequestPayload,
+    raw_response: rawResponsePayload
+  };
+}
 
 function defaultAdapterOptions(): UrbaneBoltAdapterOptions {
   return {
@@ -246,8 +341,21 @@ export class UrbaneBoltAdapter implements CourierAdapter {
     }
   }
 
-  async createShipment(_request: CreateOrderRequest): Promise<CourierCreateResult> {
-    throw operationNotImplemented('create');
+  async createShipment(request: CreateOrderRequest): Promise<CourierCreateResult> {
+    if (typeof request.service_type !== 'string' || request.service_type.trim().length === 0) {
+      throw invalidCreateRequest('UrbaneBolt create request requires service_type');
+    }
+
+    const manifestPayload = [mapCreateRequest(request)];
+    const result = await this.authenticatedRequest<unknown>({
+      operation: 'create',
+      method: 'POST',
+      url: `${this.config.baseUrl.replace(/\/+$/, '')}${CREATE_SHIPMENT_PATH}`,
+      payload: manifestPayload,
+      timeoutMs: this.config.requestTimeoutMs
+    });
+
+    return mapCreateResponse(request, result.request.payload, result.response.payload);
   }
 
   async trackShipment(_input: TrackShipmentInput): Promise<CourierTrackResult> {
