@@ -1,3 +1,5 @@
+import './config.js';
+
 /**
  * Service entry point.
  *
