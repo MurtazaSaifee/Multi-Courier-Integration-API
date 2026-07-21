@@ -22,6 +22,9 @@ function createErrorTestApp() {
   app.get('/unexpected', (_request, _response, next) => {
     next(new Error('password=should-not-be-logged'));
   });
+  app.post('/unexpected-order', (_request, _response, next) => {
+    next(new Error('provider failure'));
+  });
   app.use(errorHandler);
 
   return app;
@@ -117,6 +120,24 @@ describe('request validation and normalized errors', () => {
       });
       expect(logSpy).toHaveBeenCalledTimes(1);
       expect(logSpy.mock.calls[0][0]).not.toContain('password=should-not-be-logged');
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it('includes the create request order ID in failure logs', async () => {
+    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const response = await request(createErrorTestApp())
+        .post('/unexpected-order')
+        .send({ order_id: 'order-log-1', courier_partner: 'urbanebolt' });
+
+      expect(response.status).toBe(500);
+      expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toMatchObject({
+        order_id: 'order-log-1',
+        courier_partner: 'urbanebolt'
+      });
     } finally {
       logSpy.mockRestore();
     }
