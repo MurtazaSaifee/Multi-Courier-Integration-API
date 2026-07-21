@@ -8,6 +8,8 @@ import {
 } from '../couriers/courier-registry.js';
 import { CourierProviderError } from '../couriers/courier-adapter.js';
 import type {
+  CancelOrderResponse,
+  CourierCancelResult,
   CourierTrackResult,
   CreateOrderRequest,
   CreateOrderResponse,
@@ -308,6 +310,74 @@ export function createOrderService(
 
       return {
         ...trackResult.response,
+        order_id: order.merchant_order_id
+      };
+    },
+
+    async cancelOrder(merchantOrderId: string): Promise<CancelOrderResponse> {
+      const order = await orderRepository.findActiveOrderByMerchantOrderId(merchantOrderId);
+      if (!order) {
+        throw new OrderNotFoundError(merchantOrderId);
+      }
+
+      if (order.status === 'CANCELLED') {
+        return {
+          order_id: order.merchant_order_id,
+          courier_partner: order.courier_partner,
+          tracking_number: order.tracking_number ?? undefined,
+          status: 'CANCELLED'
+        };
+      }
+
+      if (!order.tracking_number) {
+        throw new ValidationError([
+          {
+            field: 'tracking_number',
+            message: `Order '${merchantOrderId}' does not have a tracking number to cancel`
+          }
+        ]);
+      }
+
+      const adapter = registry.resolve(order.courier_partner);
+      let cancelResult: CourierCancelResult;
+
+      try {
+        cancelResult = await adapter.cancelShipment({
+          courier_order_id: order.courier_order_id,
+          tracking_number: order.tracking_number
+        });
+      } catch (error: any) {
+        if (error instanceof CourierProviderError) {
+          throw mapCourierProviderError(error);
+        }
+        throw error;
+      }
+
+      await withTransaction(async (trx) => {
+        await orderRepository.updateCurrentState(
+          order.id,
+          {
+            status: 'CANCELLED',
+            courierResponsePayload: cancelResult.raw_response
+          },
+          trx
+        );
+
+        if (trackingHistoryRepository) {
+          await trackingHistoryRepository.insertHistoryEvent(
+            {
+              orderId: order.id,
+              status: 'CANCELLED',
+              statusAt: new Date(),
+              rawPayload: cancelResult.raw_response
+            },
+            trx
+          );
+        }
+      });
+
+      return {
+        ...cancelResult.response,
         order_id: order.merchant_order_id
       };
     }
