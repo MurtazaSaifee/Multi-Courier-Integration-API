@@ -90,6 +90,46 @@ describe('Order Service Reservation and Idempotency Flow', () => {
     });
   });
 
+  it('throws OrderIdConflictError when a pending order has different request parameters', async () => {
+    const pendingRecord: OrderRecord = {
+      id: '1',
+      merchant_order_id: 'ORDER-1001',
+      courier_partner: 'urbanebolt',
+      courier_order_id: null,
+      tracking_number: null,
+      status: 'PENDING',
+      normalized_request: sampleRequest,
+      courier_request_payload: null,
+      courier_response_payload: null,
+      failure_code: null,
+      failure_message: null,
+      is_deleted: false,
+      deleted_at: null,
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+
+    const conflictingRequest: CreateOrderRequest = {
+      ...sampleRequest,
+      package: {
+        description: 'Different Item',
+        pieces: 2,
+        weight: 10
+      }
+    };
+
+    const mockRepo: Partial<OrderRepo> = {
+      findByMerchantOrderId: vi.fn().mockResolvedValue(pendingRecord)
+    };
+
+    const service = createOrderService(mockRepo as OrderRepo);
+
+    await expect(service.reserveOrder(conflictingRequest)).rejects.toMatchObject({
+      code: 'ORDER_ID_CONFLICT',
+      statusCode: 409
+    });
+  });
+
   it('returns the existing result for an identical merchant_order_id when already completed', async () => {
     const completedRecord: OrderRecord = {
       id: '1',

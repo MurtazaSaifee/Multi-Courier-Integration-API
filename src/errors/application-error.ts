@@ -103,18 +103,18 @@ export class CourierUnavailableError extends ApplicationError {
   }
 }
 
-export function mapCourierProviderError(error: { kind: string; message: string }): ApplicationError {
+export function mapCourierProviderError(error: { kind: string }): ApplicationError {
   switch (error.kind) {
     case 'client':
-      return new CourierRejectedError(error.message);
+      return new CourierRejectedError();
     case 'authentication':
-      return new CourierAuthFailedError(error.message);
+      return new CourierAuthFailedError();
     case 'server':
     case 'timeout':
     case 'network':
     case 'not_implemented':
     default:
-      return new CourierUnavailableError(error.message);
+      return new CourierUnavailableError();
   }
 }
 
@@ -124,5 +124,4 @@ export class InternalError extends ApplicationError {
     this.name = 'InternalError';
   }
 }
-
 

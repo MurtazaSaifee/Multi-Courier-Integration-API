@@ -10,7 +10,7 @@ import type {
   OrderRecord
 } from '../src/domain/contracts.js';
 import { CourierProviderError } from '../src/couriers/courier-adapter.js';
-import { CourierRejectedError } from '../src/errors/application-error.js';
+import { UnknownCourierError } from '../src/errors/application-error.js';
 import { createOrderService } from '../src/services/order-service.js';
 
 import { createSampleOrderRequest } from './helpers/sample-order-request.js';
@@ -21,6 +21,33 @@ type HistoryRepo = ReturnType<typeof createTrackingHistoryRepository>;
 const sampleRequest = createSampleOrderRequest({ order_id: 'ORDER-2002' });
 
 describe('Order Service Create Order Flow (P4-T2)', () => {
+  it('resolves the courier before reserving an order', async () => {
+    const mockOrderRepo: Partial<OrderRepo> = {
+      findByMerchantOrderId: vi.fn(),
+      insertPendingOrder: vi.fn()
+    };
+    const mockRegistry: Partial<CourierRegistry> = {
+      resolve: vi.fn().mockImplementation(() => {
+        throw new UnknownCourierError(['urbanebolt']);
+      })
+    };
+
+    const service = createOrderService(
+      mockOrderRepo as OrderRepo,
+      undefined,
+      mockRegistry as CourierRegistry
+    );
+
+    await expect(
+      service.createOrder({ ...sampleRequest, courier_partner: 'unknown' })
+    ).rejects.toMatchObject({
+      code: 'UNKNOWN_COURIER',
+      statusCode: 400
+    });
+    expect(mockOrderRepo.findByMerchantOrderId).not.toHaveBeenCalled();
+    expect(mockOrderRepo.insertPendingOrder).not.toHaveBeenCalled();
+  });
+
   it('persists courier identifiers, raw payloads, status CREATED, and tracking history event on successful creation', async () => {
     const pendingRecord: OrderRecord = {
       id: '10',
@@ -178,7 +205,11 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
       mockRegistry as CourierRegistry
     );
 
-    await expect(service.createOrder(sampleRequest)).rejects.toThrow(CourierRejectedError);
+    await expect(service.createOrder(sampleRequest)).rejects.toMatchObject({
+      name: 'CourierRejectedError',
+      code: 'COURIER_REJECTED',
+      message: 'The courier partner rejected the order request'
+    });
 
     expect(mockOrderRepo.updateCurrentState).toHaveBeenCalledWith('10', {
       status: 'FAILED',
@@ -275,7 +306,7 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
     await expect(service.createOrder(sampleRequest)).rejects.toMatchObject({
       code: 'COURIER_UNAVAILABLE',
       statusCode: 503,
-      message: 'Courier connection timed out'
+      message: 'Courier partner is temporarily unavailable'
     });
   });
 
@@ -307,7 +338,7 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
     await expect(service.createOrder(sampleRequest)).rejects.toMatchObject({
       code: 'COURIER_AUTH_FAILED',
       statusCode: 502,
-      message: 'Invalid credentials'
+      message: 'Courier partner authentication failed'
     });
   });
 });

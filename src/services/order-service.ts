@@ -82,12 +82,12 @@ export function createOrderService(
       const existing = await orderRepository.findByMerchantOrderId(request.order_id);
 
       if (existing) {
-        if (existing.status === 'PENDING') {
-          throw new OrderInProgressError(request.order_id);
-        }
-
         if (!areRequestsEqual(existing.normalized_request, request)) {
           throw new OrderIdConflictError(request.order_id);
+        }
+
+        if (existing.status === 'PENDING') {
+          throw new OrderInProgressError(request.order_id);
         }
 
         return {
@@ -109,12 +109,12 @@ export function createOrderService(
         if (error?.code === '23505') {
           const concurrentExisting = await orderRepository.findByMerchantOrderId(request.order_id);
           if (concurrentExisting) {
-            if (concurrentExisting.status === 'PENDING') {
-              throw new OrderInProgressError(request.order_id);
-            }
-
             if (!areRequestsEqual(concurrentExisting.normalized_request, request)) {
               throw new OrderIdConflictError(request.order_id);
+            }
+
+            if (concurrentExisting.status === 'PENDING') {
+              throw new OrderInProgressError(request.order_id);
             }
 
             return {
@@ -130,6 +130,7 @@ export function createOrderService(
     },
 
     async createOrder(request: CreateOrderRequest): Promise<CreateOrderResponse> {
+      const adapter = registry.resolve(request.courier_partner);
       const reservation = await this.reserveOrder(request);
 
       if (reservation.status === 'existing') {
@@ -138,21 +139,20 @@ export function createOrderService(
         }
         if (reservation.order.status === 'FAILED') {
           const failureCode = (reservation.order.failure_code || '').toUpperCase();
-          const failureMessage = reservation.order.failure_message || 'Order creation previously failed';
 
           switch (failureCode) {
             case 'AUTHENTICATION':
             case 'COURIER_AUTH_FAILED':
-              throw new CourierAuthFailedError(failureMessage);
+              throw new CourierAuthFailedError();
             case 'SERVER':
             case 'TIMEOUT':
             case 'NETWORK':
             case 'COURIER_UNAVAILABLE':
-              throw new CourierUnavailableError(failureMessage);
+              throw new CourierUnavailableError();
             case 'CLIENT':
             case 'COURIER_REJECTED':
             default:
-              throw new CourierRejectedError(failureMessage);
+              throw new CourierRejectedError();
           }
         }
         const response = buildCreateOrderResponse(reservation.order);
@@ -163,7 +163,6 @@ export function createOrderService(
       }
 
       const order = reservation.order;
-      const adapter = registry.resolve(request.courier_partner);
 
       try {
         const result = await adapter.createShipment(request);
