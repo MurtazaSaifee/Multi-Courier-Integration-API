@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import type { createOrderService } from '../services/order-service.js';
 import { ValidationError } from '../errors/application-error.js';
+import { getRequestId } from './request-id.js';
 import { createOrderRequestSchema } from './schemas.js';
 import { validateBody } from './validation.js';
 
@@ -22,6 +23,16 @@ export function createOrderRouter(
       }
     }
   );
+
+  router.post('/orders/bulk', async (request, response, next) => {
+    try {
+      const requestId = getRequestId(request, response);
+      const result = await orderService.createBulkOrders(request.body, requestId);
+      response.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.get('/orders/:order_id/track', async (request, response, next) => {
     try {
