@@ -82,10 +82,47 @@ export class OrderInProgressError extends ApplicationError {
   }
 }
 
+export class CourierRejectedError extends ApplicationError {
+  constructor(message = 'The courier partner rejected the order request') {
+    super('COURIER_REJECTED', message);
+    this.name = 'CourierRejectedError';
+  }
+}
+
+export class CourierAuthFailedError extends ApplicationError {
+  constructor(message = 'Courier partner authentication failed') {
+    super('COURIER_AUTH_FAILED', message);
+    this.name = 'CourierAuthFailedError';
+  }
+}
+
+export class CourierUnavailableError extends ApplicationError {
+  constructor(message = 'Courier partner is temporarily unavailable') {
+    super('COURIER_UNAVAILABLE', message);
+    this.name = 'CourierUnavailableError';
+  }
+}
+
+export function mapCourierProviderError(error: { kind: string; message: string }): ApplicationError {
+  switch (error.kind) {
+    case 'client':
+      return new CourierRejectedError(error.message);
+    case 'authentication':
+      return new CourierAuthFailedError(error.message);
+    case 'server':
+    case 'timeout':
+    case 'network':
+    case 'not_implemented':
+    default:
+      return new CourierUnavailableError(error.message);
+  }
+}
+
 export class InternalError extends ApplicationError {
   constructor() {
     super('INTERNAL_ERROR', 'An unexpected error occurred');
     this.name = 'InternalError';
   }
 }
+
 

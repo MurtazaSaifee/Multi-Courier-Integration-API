@@ -10,42 +10,15 @@ import type {
   OrderRecord
 } from '../src/domain/contracts.js';
 import { CourierProviderError } from '../src/couriers/courier-adapter.js';
+import { CourierRejectedError } from '../src/errors/application-error.js';
 import { createOrderService } from '../src/services/order-service.js';
+
+import { createSampleOrderRequest } from './helpers/sample-order-request.js';
 
 type OrderRepo = ReturnType<typeof createOrderRepository>;
 type HistoryRepo = ReturnType<typeof createTrackingHistoryRepository>;
 
-const sampleRequest: CreateOrderRequest = {
-  order_id: 'ORDER-2002',
-  courier_partner: 'urbanebolt',
-  service_type: 'express',
-  sender: {
-    name: 'Sender Corp',
-    phone: '+911111111111',
-    street: '1 Warehouse Rd',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    country: 'IN',
-    postal_code: '400001'
-  },
-  recipient: {
-    name: 'John Smith',
-    phone: '+918888888888',
-    street: '50 Main St',
-    city: 'Delhi',
-    state: 'Delhi',
-    country: 'IN',
-    postal_code: '110001'
-  },
-  package: {
-    description: 'Books',
-    pieces: 2,
-    weight: 1.0
-  },
-  payment: {
-    mode: 'PREPAID'
-  }
-};
+const sampleRequest = createSampleOrderRequest({ order_id: 'ORDER-2002' });
 
 describe('Order Service Create Order Flow (P4-T2)', () => {
   it('persists courier identifiers, raw payloads, status CREATED, and tracking history event on successful creation', async () => {
@@ -205,7 +178,7 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
       mockRegistry as CourierRegistry
     );
 
-    await expect(service.createOrder(sampleRequest)).rejects.toThrow(CourierProviderError);
+    await expect(service.createOrder(sampleRequest)).rejects.toThrow(CourierRejectedError);
 
     expect(mockOrderRepo.updateCurrentState).toHaveBeenCalledWith('10', {
       status: 'FAILED',

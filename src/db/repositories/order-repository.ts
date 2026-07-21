@@ -5,6 +5,7 @@ import type {
   NormalizedStatus,
   OrderRecord
 } from '../../domain/contracts.js';
+import { toJsonb } from '../json.js';
 
 type PendingOrderInput = {
   merchantOrderId: string;
@@ -38,7 +39,7 @@ export function createOrderRepository(database: Knex) {
           merchant_order_id: input.merchantOrderId,
           courier_partner: input.courierPartner,
           status: 'PENDING',
-          normalized_request: input.normalizedRequest,
+          normalized_request: toJsonb(input.normalizedRequest) as any,
           is_deleted: false
         })
         .returning('*');
@@ -80,10 +81,10 @@ export function createOrderRepository(database: Knex) {
         changes.tracking_number = state.trackingNumber;
       }
       if (state.courierRequestPayload !== undefined) {
-        changes.courier_request_payload = state.courierRequestPayload;
+        changes.courier_request_payload = toJsonb(state.courierRequestPayload);
       }
       if (state.courierResponsePayload !== undefined) {
-        changes.courier_response_payload = state.courierResponsePayload;
+        changes.courier_response_payload = toJsonb(state.courierResponsePayload);
       }
       if (state.failureCode !== undefined) {
         changes.failure_code = state.failureCode;

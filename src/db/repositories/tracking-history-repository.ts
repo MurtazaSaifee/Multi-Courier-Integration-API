@@ -4,6 +4,7 @@ import type {
   NormalizedStatus,
   TrackingHistoryRecord
 } from '../../domain/contracts.js';
+import { toJsonb } from '../json.js';
 
 type HistoryEventInput = {
   orderId: string;
@@ -20,7 +21,7 @@ export function createTrackingHistoryRepository(database: Knex) {
           order_id: input.orderId,
           status: input.status,
           status_at: input.statusAt,
-          raw_payload: input.rawPayload
+          raw_payload: toJsonb(input.rawPayload) as any
         })
         .returning('*');
 

@@ -12,39 +12,11 @@ import {
   createOrderService
 } from '../src/services/order-service.js';
 
+import { createSampleOrderRequest } from './helpers/sample-order-request.js';
+
 type OrderRepo = ReturnType<typeof createOrderRepository>;
 
-const sampleRequest: CreateOrderRequest = {
-  order_id: 'ORDER-1001',
-  courier_partner: 'urbanebolt',
-  service_type: 'express',
-  sender: {
-    name: 'Warehouse Inc',
-    phone: '+911111111111',
-    street: '1 Industrial Way',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    country: 'IN',
-    postal_code: '400001'
-  },
-  recipient: {
-    name: 'Jane Doe',
-    phone: '+919999999999',
-    street: '10 Residential Ave',
-    city: 'Pune',
-    state: 'Maharashtra',
-    country: 'IN',
-    postal_code: '411001'
-  },
-  package: {
-    description: 'Tech Gadgets',
-    pieces: 1,
-    weight: 0.5
-  },
-  payment: {
-    mode: 'PREPAID'
-  }
-};
+const sampleRequest = createSampleOrderRequest({ order_id: 'ORDER-1001' });
 
 describe('Order Service Reservation and Idempotency Flow', () => {
   it('reserves a new order by inserting a PENDING record', async () => {

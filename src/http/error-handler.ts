@@ -16,6 +16,7 @@ function isMalformedJsonError(error: unknown): error is SyntaxError {
 
 export const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
   const requestId = getRequestId(request, response);
+
   const normalizedError = error instanceof ApplicationError
     ? error
     : error instanceof ZodError

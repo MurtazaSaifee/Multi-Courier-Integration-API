@@ -12,6 +12,7 @@ import type {
 } from '../domain/contracts.js';
 import {
   ApplicationError,
+  mapCourierProviderError,
   OrderIdConflictError,
   OrderInProgressError
 } from '../errors/application-error.js';
@@ -127,13 +128,11 @@ export function createOrderService(
             reservation.order.failure_message || 'Order creation previously failed'
           );
         }
-        return {
-          order_id: reservation.order.merchant_order_id,
-          courier_partner: reservation.order.courier_partner,
-          courier_order_id: reservation.order.courier_order_id ?? '',
-          tracking_number: reservation.order.tracking_number ?? '',
-          status: reservation.order.status
-        };
+        const response = buildCreateOrderResponse(reservation.order);
+        if (response) {
+          return response;
+        }
+        throw new ApplicationError('INTERNAL_ERROR', 'Order response could not be constructed');
       }
 
       const order = reservation.order;
@@ -190,6 +189,10 @@ export function createOrderService(
             statusAt: new Date(),
             rawPayload: rawResponsePayload ?? { error: failureMessage }
           });
+        }
+
+        if (error instanceof CourierProviderError) {
+          throw mapCourierProviderError(error);
         }
 
         throw error;
