@@ -212,4 +212,31 @@ describe('Order Service Bulk Processing (P8-T2)', () => {
       ValidationError
     );
   });
+
+  it('logs the courier partner for an invalid item when the input provides one', async () => {
+    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const service = createOrderService({}, undefined, {
+      resolve: vi.fn(),
+      getSupportedCouriers: () => ['urbanebolt']
+    });
+
+    try {
+      const response = await service.createBulkOrders([{
+        order_id: 'BULK-INVALID-LOG',
+        courier_partner: 'urbanebolt',
+        service_type: 'NDD'
+      }], 'req-invalid-log');
+
+      expect(response.results[0].success).toBe(false);
+      const logEntry = JSON.parse(String(logSpy.mock.calls[0][0]));
+      expect(logEntry).toMatchObject({
+        request_id: 'req-invalid-log',
+        order_id: 'BULK-INVALID-LOG',
+        courier_partner: 'urbanebolt',
+        error_code: 'VALIDATION_ERROR'
+      });
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
 });

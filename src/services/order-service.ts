@@ -22,6 +22,7 @@ import type {
 } from '../domain/contracts.js';
 import {
   ApplicationError,
+  attachErrorContext,
   CourierAuthFailedError,
   CourierRejectedError,
   CourierUnavailableError,
@@ -31,6 +32,7 @@ import {
   OrderNotFoundError,
   ValidationError
 } from '../errors/application-error.js';
+import { logFailure } from '../logging/logger.js';
 import { validateBulkOrders } from '../http/validation.js';
 
 export type OrderRepository = ReturnType<typeof createOrderRepository>;
@@ -39,6 +41,21 @@ export type TrackingHistoryRepository = ReturnType<typeof createTrackingHistoryR
 export type ReservationResult =
   | { status: 'reserved'; order: OrderRecord }
   | { status: 'existing'; order: OrderRecord; response?: CreateOrderResponse };
+
+function resolveCourierAdapter(
+  registry: CourierRegistry,
+  courierPartner: string,
+  orderId: string
+) {
+  try {
+    return registry.resolve(courierPartner);
+  } catch (error) {
+    throw attachErrorContext(error, {
+      order_id: orderId,
+      courier_partner: courierPartner
+    });
+  }
+}
 
 function canonicalize(val: unknown): unknown {
   if (val === null || typeof val !== 'object') {
@@ -167,7 +184,7 @@ export function createOrderService(
     },
 
     async createOrder(request: CreateOrderRequest): Promise<CreateOrderResponse> {
-      const adapter = registry.resolve(request.courier_partner);
+      const adapter = resolveCourierAdapter(registry, request.courier_partner, request.order_id);
       const reservation = await this.reserveOrder(request);
 
       if (reservation.status === 'existing') {
@@ -253,8 +270,8 @@ export function createOrderService(
               status: 'FAILED',
               failureCode,
               failureMessage,
-              ...(rawRequestPayload !== undefined ? { courierRequestPayload: rawRequestPayload } : {}),
-              ...(rawResponsePayload !== undefined ? { courierResponsePayload: rawResponsePayload } : {})
+              failureRequestPayload: rawRequestPayload ?? null,
+              failureResponsePayload: rawResponsePayload ?? null
             },
             trx
           );
@@ -272,6 +289,11 @@ export function createOrderService(
           }
         });
 
+        attachErrorContext(error, {
+          order_id: request.order_id,
+          courier_partner: request.courier_partner
+        });
+
         if (error instanceof CourierProviderError) {
           throw mapCourierProviderError(error);
         }
@@ -283,19 +305,30 @@ export function createOrderService(
     async trackOrder(merchantOrderId: string): Promise<TrackOrderResponse> {
       const order = await orderRepository.findActiveOrderByMerchantOrderId(merchantOrderId);
       if (!order) {
-        throw new OrderNotFoundError(merchantOrderId);
+        throw attachErrorContext(
+          new OrderNotFoundError(merchantOrderId),
+          { order_id: merchantOrderId }
+        );
       }
 
       if (!order.tracking_number) {
-        throw new ValidationError([
+        const err = new ValidationError([
           {
             field: 'tracking_number',
             message: `Order '${merchantOrderId}' does not have a tracking number to track`
           }
         ]);
+        throw attachErrorContext(err, {
+          order_id: merchantOrderId,
+          courier_partner: order.courier_partner
+        });
       }
 
-      const adapter = registry.resolve(order.courier_partner);
+      const adapter = resolveCourierAdapter(
+        registry,
+        order.courier_partner,
+        order.merchant_order_id
+      );
       let trackResult: CourierTrackResult;
 
       try {
@@ -304,6 +337,38 @@ export function createOrderService(
           tracking_number: order.tracking_number
         });
       } catch (error: any) {
+        const failureCode = error instanceof CourierProviderError
+          ? error.kind.toUpperCase()
+          : error.name || 'COURIER_ERROR';
+
+        const failureMessage = error.message || 'Failed to track shipment';
+
+        const rawRequestPayload = error instanceof CourierProviderError
+          ? error.rawRequestPayload
+          : undefined;
+
+        const rawResponsePayload = error instanceof CourierProviderError
+          ? error.rawResponsePayload
+          : undefined;
+
+        attachErrorContext(error, {
+          order_id: order.merchant_order_id,
+          courier_partner: order.courier_partner
+        });
+
+        await withTransaction(async (trx) => {
+          await orderRepository.updateCurrentState(
+            order.id,
+            {
+              failureCode,
+              failureMessage,
+              failureRequestPayload: rawRequestPayload ?? null,
+              failureResponsePayload: rawResponsePayload ?? null
+            },
+            trx
+          );
+        });
+
         if (error instanceof CourierProviderError) {
           throw mapCourierProviderError(error);
         }
@@ -315,7 +380,11 @@ export function createOrderService(
           order.id,
           {
             status: trackResult.response.status,
-            courierResponsePayload: trackResult.raw_response
+            courierResponsePayload: trackResult.raw_response,
+            failureRequestPayload: null,
+            failureResponsePayload: null,
+            failureCode: null,
+            failureMessage: null
           },
           trx
         );
@@ -348,7 +417,10 @@ export function createOrderService(
     async cancelOrder(merchantOrderId: string): Promise<CancelOrderResponse> {
       const order = await orderRepository.findActiveOrderByMerchantOrderId(merchantOrderId);
       if (!order) {
-        throw new OrderNotFoundError(merchantOrderId);
+        throw attachErrorContext(
+          new OrderNotFoundError(merchantOrderId),
+          { order_id: merchantOrderId }
+        );
       }
 
       if (order.status === 'CANCELLED') {
@@ -361,15 +433,23 @@ export function createOrderService(
       }
 
       if (!order.tracking_number) {
-        throw new ValidationError([
+        const err = new ValidationError([
           {
             field: 'tracking_number',
             message: `Order '${merchantOrderId}' does not have a tracking number to cancel`
           }
         ]);
+        throw attachErrorContext(err, {
+          order_id: merchantOrderId,
+          courier_partner: order.courier_partner
+        });
       }
 
-      const adapter = registry.resolve(order.courier_partner);
+      const adapter = resolveCourierAdapter(
+        registry,
+        order.courier_partner,
+        order.merchant_order_id
+      );
       let cancelResult: CourierCancelResult;
 
       try {
@@ -378,6 +458,38 @@ export function createOrderService(
           tracking_number: order.tracking_number
         });
       } catch (error: any) {
+        const failureCode = error instanceof CourierProviderError
+          ? error.kind.toUpperCase()
+          : error.name || 'COURIER_ERROR';
+
+        const failureMessage = error.message || 'Failed to cancel shipment';
+
+        const rawRequestPayload = error instanceof CourierProviderError
+          ? error.rawRequestPayload
+          : undefined;
+
+        const rawResponsePayload = error instanceof CourierProviderError
+          ? error.rawResponsePayload
+          : undefined;
+
+        attachErrorContext(error, {
+          order_id: order.merchant_order_id,
+          courier_partner: order.courier_partner
+        });
+
+        await withTransaction(async (trx) => {
+          await orderRepository.updateCurrentState(
+            order.id,
+            {
+              failureCode,
+              failureMessage,
+              failureRequestPayload: rawRequestPayload ?? null,
+              failureResponsePayload: rawResponsePayload ?? null
+            },
+            trx
+          );
+        });
+
         if (error instanceof CourierProviderError) {
           throw mapCourierProviderError(error);
         }
@@ -389,7 +501,11 @@ export function createOrderService(
           order.id,
           {
             status: 'CANCELLED',
-            courierResponsePayload: cancelResult.raw_response
+            courierResponsePayload: cancelResult.raw_response,
+            failureRequestPayload: null,
+            failureResponsePayload: null,
+            failureCode: null,
+            failureMessage: null
           },
           trx
         );
@@ -425,6 +541,11 @@ export function createOrderService(
         concurrencyLimit,
         async (itemRes): Promise<BulkOrderResult> => {
           if (!itemRes.valid) {
+            logFailure(new ValidationError(itemRes.failure.error.details), {
+              request_id: requestId,
+              order_id: itemRes.order_id,
+              courier_partner: itemRes.courier_partner
+            });
             return itemRes.failure;
           }
 
@@ -436,6 +557,12 @@ export function createOrderService(
               result: createResponse
             };
           } catch (error: any) {
+            logFailure(error, {
+              request_id: requestId,
+              order_id: itemRes.item.order_id,
+              courier_partner: itemRes.item.courier_partner
+            });
+
             let normalizedError: NormalizedError;
             if (error instanceof ApplicationError) {
               normalizedError = error.toResponse(requestId).error;

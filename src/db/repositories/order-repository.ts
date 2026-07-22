@@ -14,11 +14,13 @@ type PendingOrderInput = {
 };
 
 type CurrentStateUpdate = {
-  status: NormalizedStatus;
+  status?: NormalizedStatus;
   courierOrderId?: string | null;
   trackingNumber?: string | null;
   courierRequestPayload?: unknown | null;
   courierResponsePayload?: unknown | null;
+  failureRequestPayload?: unknown | null;
+  failureResponsePayload?: unknown | null;
   failureCode?: string | null;
   failureMessage?: string | null;
   isDeleted?: boolean;
@@ -72,9 +74,12 @@ export function createOrderRepository(database: Knex) {
       trx?: Knex
     ): Promise<OrderRecord | undefined> {
       const changes: Record<string, unknown> = {
-        status: state.status,
         updated_at: database.fn.now()
       };
+
+      if (state.status !== undefined) {
+        changes.status = state.status;
+      }
 
       if (state.courierOrderId !== undefined) {
         changes.courier_order_id = state.courierOrderId;
@@ -87,6 +92,12 @@ export function createOrderRepository(database: Knex) {
       }
       if (state.courierResponsePayload !== undefined) {
         changes.courier_response_payload = toJsonb(state.courierResponsePayload);
+      }
+      if (state.failureRequestPayload !== undefined) {
+        changes.failure_request_payload = toJsonb(state.failureRequestPayload);
+      }
+      if (state.failureResponsePayload !== undefined) {
+        changes.failure_response_payload = toJsonb(state.failureResponsePayload);
       }
       if (state.failureCode !== undefined) {
         changes.failure_code = state.failureCode;

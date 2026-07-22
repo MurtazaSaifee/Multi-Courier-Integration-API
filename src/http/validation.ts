@@ -31,7 +31,12 @@ export function validateBody(schema: z.ZodType): import('express').RequestHandle
 
 export type BulkItemValidationResult =
   | { valid: true; item: CreateOrderRequest }
-  | { valid: false; order_id: string; failure: BulkOrderFailure };
+  | {
+      valid: false;
+      order_id: string;
+      courier_partner?: string;
+      failure: BulkOrderFailure;
+    };
 
 export function validateBulkOrders(
   body: unknown,
@@ -76,9 +81,17 @@ export function validateBulkOrders(
         ? itemRecord.order_id.trim()
         : `item_${index + 1}`;
 
+    const rawCourierPartner =
+      itemRecord &&
+      typeof itemRecord.courier_partner === 'string' &&
+      itemRecord.courier_partner.trim().length > 0
+        ? itemRecord.courier_partner.trim()
+        : undefined;
+
     return {
       valid: false,
       order_id: rawId,
+      ...(rawCourierPartner === undefined ? {} : { courier_partner: rawCourierPartner }),
       failure: {
         order_id: rawId,
         success: false,
@@ -92,4 +105,3 @@ export function validateBulkOrders(
     };
   });
 }
-

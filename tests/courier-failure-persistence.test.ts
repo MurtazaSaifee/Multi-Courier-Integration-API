@@ -102,8 +102,8 @@ describe('Normalized Failures & Failure Persistence (P7-T3)', () => {
     expect(storedOrder?.status).toBe('FAILED');
     expect(storedOrder?.failure_code).toBe('CLIENT');
     expect(storedOrder?.failure_message).toBe('Pincode not serviceable');
-    expect(storedOrder?.courier_request_payload).toEqual({ shprPincode: '110001', consPincode: '400001' });
-    expect(storedOrder?.courier_response_payload).toEqual({ error: 'Pincode 400001 not serviceable' });
+    expect(storedOrder?.failure_request_payload).toEqual({ shprPincode: '110001', consPincode: '400001' });
+    expect(storedOrder?.failure_response_payload).toEqual({ error: 'Pincode 400001 not serviceable' });
 
     // Verify failed order is queryable via listFailedOrders for reconciliation
     const failedOrders = await orderRepo.listFailedOrders();

@@ -16,10 +16,35 @@ const HTTP_STATUS_BY_CODE: Record<NormalizedErrorCode, number> = {
   INTERNAL_ERROR: 500
 };
 
+export type PrivateLogContext = {
+  order_id?: string;
+  courier_partner?: string;
+  request_id?: string;
+};
+
+export function attachErrorContext<T>(
+  error: T,
+  context: PrivateLogContext
+): T {
+  if ((typeof error !== 'object' || error === null) && typeof error !== 'function') {
+    return error;
+  }
+
+  const existing = (error as T & { context?: PrivateLogContext }).context || {};
+  Object.defineProperty(error, 'context', {
+    value: { ...existing, ...context },
+    writable: true,
+    enumerable: false,
+    configurable: true
+  });
+  return error;
+}
+
 export class ApplicationError extends Error {
   readonly code: NormalizedErrorCode;
   readonly details: ErrorDetail[];
   readonly statusCode: number;
+  context?: PrivateLogContext;
 
   constructor(code: NormalizedErrorCode, message: string, details: ErrorDetail[] = []) {
     super(message);
@@ -111,18 +136,26 @@ export class CourierUnavailableError extends ApplicationError {
 }
 
 export function mapCourierProviderError(error: { kind: string }): ApplicationError {
+  let mapped: ApplicationError;
   switch (error.kind) {
     case 'client':
-      return new CourierRejectedError();
+      mapped = new CourierRejectedError();
+      break;
     case 'authentication':
-      return new CourierAuthFailedError();
+      mapped = new CourierAuthFailedError();
+      break;
     case 'server':
     case 'timeout':
     case 'network':
     case 'not_implemented':
     default:
-      return new CourierUnavailableError();
+      mapped = new CourierUnavailableError();
+      break;
   }
+  if ((error as any).context) {
+    attachErrorContext(mapped, (error as any).context);
+  }
+  return mapped;
 }
 
 export class InternalError extends ApplicationError {
@@ -131,4 +164,3 @@ export class InternalError extends ApplicationError {
     this.name = 'InternalError';
   }
 }
-

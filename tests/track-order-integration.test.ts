@@ -225,7 +225,9 @@ describe('PostgreSQL Order Tracking Integration (P5-T3)', () => {
         operation: 'track',
         kind: 'server',
         message: 'Courier server error during tracking',
-        retryable: true
+        retryable: true,
+        rawRequestPayload: { awb: 'AWB-INT-100' },
+        rawResponsePayload: { error: 'Internal courier error 500' }
       })
     );
 
@@ -234,10 +236,46 @@ describe('PostgreSQL Order Tracking Integration (P5-T3)', () => {
       .expect(503);
 
     expect(res.body.error.code).toBe('COURIER_UNAVAILABLE');
+    // Ensure raw provider error is not returned publicly
+    expect(res.body.error).not.toHaveProperty('rawResponsePayload');
+    expect(JSON.stringify(res.body)).not.toContain('Internal courier error 500');
 
-    // Verify existing status CREATED is preserved
+    // Verify existing status CREATED is preserved while failure fields are stored
     const orderInDb = await db('orders').where('merchant_order_id', sampleRequest.order_id).first();
     expect(orderInDb.status).toBe('CREATED');
+    expect(orderInDb.failure_code).toBe('SERVER');
+    expect(orderInDb.failure_message).toBe('Courier server error during tracking');
+    expect(orderInDb.courier_request_payload).toEqual({ test: 'req' });
+    expect(orderInDb.courier_response_payload).toEqual({ test: 'res' });
+    expect(orderInDb.failure_request_payload).toEqual({ awb: 'AWB-INT-100' });
+    expect(orderInDb.failure_response_payload).toEqual({ error: 'Internal courier error 500' });
+
+    // Verify no tracking history was added for the failed attempt
+    const historyInDb = await db('tracking_history').where('order_id', orderInDb.id);
+    expect(historyInDb.filter((h) => h.status === 'FAILED')).toHaveLength(0);
+
+    // Verify subsequent successful tracking clears failure fields
+    const successfulTrackResult: CourierTrackResult = {
+      response: {
+        order_id: 'UB-INT-100',
+        courier_partner: 'urbanebolt',
+        tracking_number: 'AWB-INT-100',
+        status: 'IN_TRANSIT',
+        status_updated_at: '2026-07-21T15:00:00.000Z',
+        events: []
+      },
+      raw_response: { raw_step: 3 }
+    };
+    (mockAdapter.trackShipment as any).mockResolvedValueOnce(successfulTrackResult);
+
+    await request(app)
+      .get(`/api/v1/orders/${sampleRequest.order_id}/track`)
+      .expect(200);
+
+    const clearedOrderInDb = await db('orders').where('merchant_order_id', sampleRequest.order_id).first();
+    expect(clearedOrderInDb.status).toBe('IN_TRANSIT');
+    expect(clearedOrderInDb.failure_code).toBeNull();
+    expect(clearedOrderInDb.failure_message).toBeNull();
   });
 
   it('returns 404 ORDER_NOT_FOUND and does not invoke courier adapter when order is soft-deleted in PostgreSQL', async () => {

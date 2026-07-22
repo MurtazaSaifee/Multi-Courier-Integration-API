@@ -215,8 +215,8 @@ describe('Order Service Create Order Flow (P4-T2)', () => {
       status: 'FAILED',
       failureCode: 'CLIENT',
       failureMessage: 'Invalid pincode',
-      courierRequestPayload: { sent: 'data' },
-      courierResponsePayload: { errorResponse: [{ message: 'Invalid pincode' }] }
+      failureRequestPayload: { sent: 'data' },
+      failureResponsePayload: { errorResponse: [{ message: 'Invalid pincode' }] }
     }, undefined);
 
     expect(mockHistoryRepo.insertHistoryEvent).toHaveBeenCalledWith({

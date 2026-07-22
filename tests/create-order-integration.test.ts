@@ -293,8 +293,8 @@ describe('PostgreSQL Order Creation & Persistence Integration (P4-T4)', () => {
     expect(dbOrder.status).toBe('FAILED');
     expect(dbOrder.failure_code).toBe('CLIENT');
     expect(dbOrder.failure_message).toBe('Address unserviceable by courier');
-    expect(dbOrder.courier_request_payload).toEqual({ payload: 'sent' });
-    expect(dbOrder.courier_response_payload).toEqual({ error: 'Address unserviceable' });
+    expect(dbOrder.failure_request_payload).toEqual({ payload: 'sent' });
+    expect(dbOrder.failure_response_payload).toEqual({ error: 'Address unserviceable' });
 
     // Check tracking_history persistence of failure event
     const dbHistory = await db('tracking_history').where('order_id', dbOrder.id);

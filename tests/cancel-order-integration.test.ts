@@ -212,6 +212,7 @@ describe('PostgreSQL Order Cancellation Integration (P6-T2)', () => {
         kind: 'client',
         message: 'Cannot cancel shipment after pickup',
         retryable: false,
+        rawRequestPayload: { awb: 'AWB-INT-CANCEL-100' },
         rawResponsePayload: { error: 'Already picked up' }
       })
     );
@@ -221,9 +222,42 @@ describe('PostgreSQL Order Cancellation Integration (P6-T2)', () => {
       .expect(422);
 
     expect(res.body.error.code).toBe('COURIER_REJECTED');
+    expect(res.body.error).not.toHaveProperty('rawResponsePayload');
+    expect(JSON.stringify(res.body)).not.toContain('Already picked up');
 
-    // Original status CREATED should be preserved
+    // Original status CREATED should be preserved while failure fields are saved
     const orderInDb = await db('orders').where('merchant_order_id', sampleRequest.order_id).first();
     expect(orderInDb.status).toBe('CREATED');
+    expect(orderInDb.failure_code).toBe('CLIENT');
+    expect(orderInDb.failure_message).toBe('Cannot cancel shipment after pickup');
+    expect(orderInDb.courier_request_payload).toEqual({ test: 'req' });
+    expect(orderInDb.courier_response_payload).toEqual({ test: 'res' });
+    expect(orderInDb.failure_request_payload).toEqual({ awb: 'AWB-INT-CANCEL-100' });
+    expect(orderInDb.failure_response_payload).toEqual({ error: 'Already picked up' });
+
+    // Verify no tracking history was added for the failed attempt
+    const historyInDb = await db('tracking_history').where('order_id', orderInDb.id);
+    expect(historyInDb.filter((h) => h.status === 'FAILED')).toHaveLength(0);
+
+    // Verify subsequent successful cancellation clears failure fields
+    const successfulCancelResult: CourierCancelResult = {
+      response: {
+        order_id: 'UB-INT-CANCEL-100',
+        courier_partner: 'urbanebolt',
+        tracking_number: 'AWB-INT-CANCEL-100',
+        status: 'CANCELLED'
+      },
+      raw_response: { provider_message: 'Cancelled on retry' }
+    };
+    (mockAdapter.cancelShipment as any).mockResolvedValueOnce(successfulCancelResult);
+
+    await request(app)
+      .post(`/api/v1/orders/${sampleRequest.order_id}/cancel`)
+      .expect(200);
+
+    const clearedOrderInDb = await db('orders').where('merchant_order_id', sampleRequest.order_id).first();
+    expect(clearedOrderInDb.status).toBe('CANCELLED');
+    expect(clearedOrderInDb.failure_code).toBeNull();
+    expect(clearedOrderInDb.failure_message).toBeNull();
   });
 });

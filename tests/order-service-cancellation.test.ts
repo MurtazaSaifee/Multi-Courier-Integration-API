@@ -99,7 +99,11 @@ describe('Order Service Cancellation Flow (P6-T1)', () => {
       '101',
       {
         status: 'CANCELLED',
-        courierResponsePayload: { raw: 'cancel-response' }
+        courierResponsePayload: { raw: 'cancel-response' },
+        failureRequestPayload: null,
+        failureResponsePayload: null,
+        failureCode: null,
+        failureMessage: null
       },
       undefined
     );
@@ -205,7 +209,8 @@ describe('Order Service Cancellation Flow (P6-T1)', () => {
 
   it('maps CourierProviderError from adapter to normalized ApplicationError', async () => {
     const mockOrderRepo: Partial<OrderRepo> = {
-      findActiveOrderByMerchantOrderId: vi.fn().mockResolvedValue(mockActiveOrder)
+      findActiveOrderByMerchantOrderId: vi.fn().mockResolvedValue(mockActiveOrder),
+      updateCurrentState: vi.fn().mockResolvedValue(mockActiveOrder)
     };
 
     const mockAdapter: Partial<CourierAdapter> = {
@@ -231,5 +236,15 @@ describe('Order Service Cancellation Flow (P6-T1)', () => {
     );
 
     await expect(service.cancelOrder('ORDER-CANCEL-1')).rejects.toThrow(CourierUnavailableError);
+    expect(mockOrderRepo.updateCurrentState).toHaveBeenCalledWith(
+      '101',
+      {
+        failureCode: 'SERVER',
+        failureMessage: 'Courier internal error during cancellation',
+        failureRequestPayload: null,
+        failureResponsePayload: null
+      },
+      undefined
+    );
   });
 });

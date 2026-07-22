@@ -16,11 +16,19 @@ function isMalformedJsonError(error: unknown): error is SyntaxError {
 
 export const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
   const requestId = getRequestId(request, response);
-  const orderId = typeof request.params.order_id === 'string'
-    ? request.params.order_id
-    : typeof request.body?.order_id === 'string'
-      ? request.body.order_id
-      : undefined;
+  const errContext = (error as any)?.context;
+  const orderId = errContext?.order_id || (
+    typeof request.params.order_id === 'string'
+      ? request.params.order_id
+      : typeof request.body?.order_id === 'string'
+        ? request.body.order_id
+        : undefined
+  );
+  const courierPartner = errContext?.courier_partner || (
+    typeof request.body?.courier_partner === 'string'
+      ? request.body.courier_partner
+      : undefined
+  );
 
   const normalizedError = error instanceof ApplicationError
     ? error
@@ -34,9 +42,7 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, _nex
     request_id: requestId,
     error_code: normalizedError.code,
     ...(orderId === undefined ? {} : { order_id: orderId }),
-    ...(typeof request.body?.courier_partner === 'string'
-      ? { courier_partner: request.body.courier_partner }
-      : {})
+    ...(courierPartner === undefined ? {} : { courier_partner: courierPartner })
   });
 
   response.status(normalizedError.statusCode).json(normalizedError.toResponse(requestId));

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import type { createOrderService } from '../services/order-service.js';
-import { ValidationError } from '../errors/application-error.js';
+import { attachErrorContext, ValidationError } from '../errors/application-error.js';
 import { getRequestId } from './request-id.js';
 import { createOrderRequestSchema } from './schemas.js';
 import { validateBody } from './validation.js';
@@ -19,7 +19,10 @@ export function createOrderRouter(
         const result = await orderService.createOrder(request.body);
         response.status(201).json(result);
       } catch (error) {
-        next(error);
+        next(attachErrorContext(error, {
+          order_id: request.body.order_id,
+          courier_partner: request.body.courier_partner
+        }));
       }
     }
   );
@@ -45,7 +48,7 @@ export function createOrderRouter(
       const result = await orderService.trackOrder(orderId);
       response.status(200).json(result);
     } catch (error) {
-      next(error);
+      next(attachErrorContext(error, { order_id: String(request.params.order_id || '').trim() }));
     }
   });
 
@@ -60,7 +63,7 @@ export function createOrderRouter(
       const result = await orderService.cancelOrder(orderId);
       response.status(200).json(result);
     } catch (error) {
-      next(error);
+      next(attachErrorContext(error, { order_id: String(request.params.order_id || '').trim() }));
     }
   });
 

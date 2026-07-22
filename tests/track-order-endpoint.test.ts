@@ -53,20 +53,29 @@ describe('GET /api/v1/orders/:order_id/track endpoint (P5-T2)', () => {
     const mockOrderService: Partial<OrderService> = {
       trackOrder: vi.fn().mockRejectedValue(new OrderNotFoundError('ORD-UNKNOWN'))
     };
+    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const app = createApp({ orderService: mockOrderService as OrderService });
+    try {
+      const app = createApp({ orderService: mockOrderService as OrderService });
 
-    const response = await request(app)
-      .get('/api/v1/orders/ORD-UNKNOWN/track')
-      .expect(404);
+      const response = await request(app)
+        .get('/api/v1/orders/ORD-UNKNOWN/track')
+        .expect(404);
 
-    expect(response.body).toMatchObject({
-      error: {
-        code: 'ORDER_NOT_FOUND',
-        message: "Order 'ORD-UNKNOWN' was not found",
-        request_id: expect.any(String)
-      }
-    });
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'ORDER_NOT_FOUND',
+          message: "Order 'ORD-UNKNOWN' was not found",
+          request_id: expect.any(String)
+        }
+      });
+      expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toMatchObject({
+        order_id: 'ORD-UNKNOWN',
+        error_code: 'ORDER_NOT_FOUND'
+      });
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it('returns 400 Bad Request with VALIDATION_ERROR when order has no tracking_number', async () => {

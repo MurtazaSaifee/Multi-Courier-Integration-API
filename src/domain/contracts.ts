@@ -147,6 +147,8 @@ export type OrderRecord = {
   normalized_request: CreateOrderRequest;
   courier_request_payload: unknown | null;
   courier_response_payload: unknown | null;
+  failure_request_payload?: unknown | null;
+  failure_response_payload?: unknown | null;
   failure_code: string | null;
   failure_message: string | null;
   is_deleted: boolean;

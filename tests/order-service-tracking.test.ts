@@ -110,7 +110,11 @@ describe('Order Service Tracking Flow (P5-T1)', () => {
       '100',
       {
         status: 'IN_TRANSIT',
-        courierResponsePayload: { raw: 'data' }
+        courierResponsePayload: { raw: 'data' },
+        failureRequestPayload: null,
+        failureResponsePayload: null,
+        failureCode: null,
+        failureMessage: null
       },
       undefined
     );
@@ -229,7 +233,8 @@ describe('Order Service Tracking Flow (P5-T1)', () => {
 
   it('maps CourierProviderError from adapter to normalized ApplicationError', async () => {
     const mockOrderRepo: Partial<OrderRepo> = {
-      findActiveOrderByMerchantOrderId: vi.fn().mockResolvedValue(mockOrder)
+      findActiveOrderByMerchantOrderId: vi.fn().mockResolvedValue(mockOrder),
+      updateCurrentState: vi.fn().mockResolvedValue(mockOrder)
     };
 
     const mockAdapter: Partial<CourierAdapter> = {
@@ -255,5 +260,15 @@ describe('Order Service Tracking Flow (P5-T1)', () => {
     );
 
     await expect(service.trackOrder('ORDER-TRACK-1')).rejects.toThrow(CourierUnavailableError);
+    expect(mockOrderRepo.updateCurrentState).toHaveBeenCalledWith(
+      '100',
+      {
+        failureCode: 'SERVER',
+        failureMessage: 'Courier internal error',
+        failureRequestPayload: null,
+        failureResponsePayload: null
+      },
+      undefined
+    );
   });
 });

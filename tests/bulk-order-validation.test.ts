@@ -124,6 +124,7 @@ describe('Bulk Order Request Validation (P8-T1)', () => {
     expect(results[1].valid).toBe(false);
     if (!results[1].valid) {
       expect(results[1].order_id).toBe('BULK-ORD-INVALID');
+      expect(results[1].courier_partner).toBe('urbanebolt');
       expect(results[1].failure.success).toBe(false);
       expect(results[1].failure.error.code).toBe('VALIDATION_ERROR');
       expect(results[1].failure.error.request_id).toBe('req-789');
