@@ -29,7 +29,7 @@ const urbaneBoltTestConfig: UrbaneBoltAdapterConfig = {
 const createRequest: CreateOrderRequest = {
   order_id: 'order-123',
   courier_partner: 'urbanebolt',
-  service_type: 'express',
+  service_type: 'NDD',
   sender: {
     name: 'Warehouse',
     phone: '+911111111111',
@@ -228,7 +228,7 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
       expect(result.raw_request).toEqual([
         expect.objectContaining({
           orderNumber: 'order-123',
-          serviceType: 'express',
+          serviceType: 'NDD',
           shprName: 'Warehouse',
           consName: 'Customer'
         })

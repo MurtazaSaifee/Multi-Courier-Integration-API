@@ -148,7 +148,7 @@ describe('Courier Authentication Failure Handling & Refresh (P7-T2)', () => {
       adapter.createShipment({
         order_id: 'ORD-1',
         courier_partner: 'urbanebolt',
-        service_type: 'express',
+        service_type: 'NDD',
         sender: {
           name: 'Sender',
           phone: '+919999999999',

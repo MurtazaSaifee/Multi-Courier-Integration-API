@@ -20,7 +20,7 @@ const urbaneBoltTestConfig: UrbaneBoltAdapterConfig = {
 const createRequest: CreateOrderRequest = {
   order_id: 'order-123',
   courier_partner: 'urbanebolt',
-  service_type: 'express',
+  service_type: 'NDD',
   sender: {
     name: 'Warehouse',
     phone: '+911111111111',
@@ -115,37 +115,41 @@ describe('UrbaneBolt create shipment mapping', () => {
       headers: { authorization: 'Bearer create-token' },
       payload: [{
         orderNumber: 'order-123',
-        serviceType: 'express',
+        serviceType: 'NDD',
         shprName: 'Warehouse',
-        shprPhone: '+911111111111',
+        shprMobile: '1111111111',
         shprEmail: 'warehouse@example.com',
-        shprAdd: '1 Sender Street',
+        shprAddress: '1 Sender Street',
+        shprAddressType: 'Office',
         shprCity: 'Mumbai',
         shprState: 'Maharashtra',
         shprCountry: 'IN',
         shprPincode: '400001',
         consName: 'Customer',
-        consPhone: '+912222222222',
-        consAdd: '2 Recipient Street',
+        consMobile: '2222222222',
+        consAddress: '2 Recipient Street',
+        consAddressType: 'Home',
         consCity: 'Pune',
         consState: 'Maharashtra',
         consCountry: 'IN',
         consPincode: '411001',
         rtnName: 'Returns',
-        rtnPhone: '+913333333333',
-        rtnAdd: '3 Return Street',
+        rtnMobile: '3333333333',
+        rtnAddress: '3 Return Street',
         rtnCity: 'Mumbai',
         rtnState: 'Maharashtra',
         rtnCountry: 'IN',
         rtnPincode: '400002',
         itemDescription: 'Blue shirt',
         pieces: 2,
+        itemQuantity: 2,
         weight: 1.25,
         length: 20,
         breadth: 15,
         height: 5,
-        paymentMode: 'COD',
-        codAmount: 799,
+        payMode: 'COD',
+        collectableValue: 799,
+        declaredValue: 799,
         invoiceNumber: 'INV-123',
         invoiceDate: '2026-07-21',
         invoiceValue: 799
@@ -212,7 +216,7 @@ describe('UrbaneBolt create shipment mapping', () => {
     expect(httpClient).toHaveBeenCalledTimes(2);
     expect((httpClient.mock.calls[1][0].payload as unknown[])[0]).toMatchObject({
       orderNumber: 'order-123',
-      serviceType: 'express'
+      serviceType: 'NDD'
     });
   });
 

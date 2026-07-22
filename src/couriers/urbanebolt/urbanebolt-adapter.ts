@@ -34,6 +34,7 @@ export type UrbaneBoltAdapterConfig = {
   baseUrl: string;
   username: string;
   password: string;
+  customerCode?: string;
   requestTimeoutMs: number;
   retryCount?: number;
   retryDelayMs?: number;
@@ -51,11 +52,18 @@ type AuthenticatedRequestOptions = Omit<ProviderHttpRequestOptions, 'headers'> &
 
 type UrbaneBoltManifestPayload = Record<string, unknown>;
 
-function mapAddress(prefix: 'shpr' | 'cons' | 'rtn', address: Address): UrbaneBoltManifestPayload {
+const URBANEBOLT_SERVICE_TYPES = ['SSDD', 'SDD', 'NDD', 'ATA', 'PTP', '2HR'] as const;
+
+function mapAddress(
+  prefix: 'shpr' | 'cons' | 'rtn',
+  address: Address,
+  addressType?: string
+): UrbaneBoltManifestPayload {
   return {
     [`${prefix}Name`]: address.name,
-    [`${prefix}Phone`]: address.phone,
-    [`${prefix}Add`]: address.street,
+    [`${prefix}Mobile`]: normalizeMobile(address.phone),
+    [`${prefix}Address`]: address.street,
+    ...(addressType === undefined ? {} : { [`${prefix}AddressType`]: addressType }),
     [`${prefix}City`]: address.city,
     [`${prefix}State`]: address.state,
     [`${prefix}Country`]: address.country,
@@ -64,27 +72,66 @@ function mapAddress(prefix: 'shpr' | 'cons' | 'rtn', address: Address): UrbaneBo
   };
 }
 
-function mapCreateRequest(request: CreateOrderRequest): UrbaneBoltManifestPayload {
+function normalizeServiceType(value: string): string {
+  const serviceType = value.trim().toUpperCase();
+  if ((URBANEBOLT_SERVICE_TYPES as readonly string[]).includes(serviceType)) {
+    return serviceType;
+  }
+
+  throw invalidCreateRequest(
+    `UrbaneBolt service_type must be one of: ${URBANEBOLT_SERVICE_TYPES.join(', ')}`
+  );
+}
+
+function normalizeMobile(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+}
+
+function normalizePaymentMode(value: string): string {
+  const paymentMode = value.trim().toUpperCase();
+  const mappedMode = paymentMode === 'PREPAID' ? 'PPD' : paymentMode;
+  const supportedModes = ['PPD', 'COD', 'RVP', 'RVPQC'];
+
+  if (supportedModes.includes(mappedMode)) {
+    return mappedMode;
+  }
+
+  throw invalidCreateRequest(
+    `UrbaneBolt payment.mode must be one of: ${supportedModes.join(', ')}`
+  );
+}
+
+function mapCreateRequest(
+  request: CreateOrderRequest,
+  serviceType: string,
+  paymentMode: string,
+  customerCode?: string
+): UrbaneBoltManifestPayload {
+  const returnAddress = request.return_address ?? request.sender;
+  const invoiceValue = request.invoice?.value ?? 0;
+
   return {
+    ...(customerCode === undefined ? {} : { customerCode }),
     orderNumber: request.order_id,
-    serviceType: request.service_type,
-    ...mapAddress('shpr', request.sender),
-    ...mapAddress('cons', request.recipient),
-    ...(request.return_address === undefined ? {} : mapAddress('rtn', request.return_address)),
+    serviceType,
+    ...mapAddress('shpr', request.sender, 'Office'),
+    ...mapAddress('cons', request.recipient, 'Home'),
+    ...mapAddress('rtn', returnAddress),
     itemDescription: request.package.description,
     pieces: request.package.pieces,
+    itemQuantity: request.package.pieces,
     weight: request.package.weight,
     ...(request.package.length === undefined ? {} : { length: request.package.length }),
     ...(request.package.breadth === undefined ? {} : { breadth: request.package.breadth }),
     ...(request.package.height === undefined ? {} : { height: request.package.height }),
-    paymentMode: request.payment.mode,
-    ...(request.payment.amount_to_collect === undefined
-      ? {}
-      : { codAmount: request.payment.amount_to_collect }),
+    payMode: paymentMode,
+    collectableValue: request.payment.amount_to_collect ?? 0,
+    declaredValue: invoiceValue,
+    invoiceValue,
     ...(request.invoice === undefined ? {} : {
       invoiceNumber: request.invoice.invoice_number,
-      invoiceDate: request.invoice.invoice_date,
-      invoiceValue: request.invoice.value
+      invoiceDate: request.invoice.invoice_date
     })
   };
 }
@@ -407,6 +454,7 @@ function defaultAdapterOptions(): UrbaneBoltAdapterOptions {
       baseUrl: appConfig.urbanebolt.baseUrl,
       username: appConfig.urbanebolt.username,
       password: appConfig.urbanebolt.password,
+      customerCode: appConfig.urbanebolt.customerCode,
       requestTimeoutMs: appConfig.requestTimeoutMs,
       retryCount: appConfig.retryCount,
       retryDelayMs: appConfig.retryDelayMs
@@ -632,7 +680,12 @@ export class UrbaneBoltAdapter implements CourierAdapter {
       throw invalidCreateRequest('UrbaneBolt create request requires service_type');
     }
 
-    const manifestPayload = [mapCreateRequest(request)];
+    const manifestPayload = [mapCreateRequest(
+      request,
+      normalizeServiceType(request.service_type),
+      normalizePaymentMode(request.payment.mode),
+      this.config.customerCode
+    )];
     const result = await this.authenticatedRequest<unknown>({
       operation: 'create',
       method: 'POST',

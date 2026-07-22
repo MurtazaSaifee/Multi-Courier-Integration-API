@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 
-dotenv.config({ override: true, quiet: true });
+dotenv.config({ override: false, quiet: true });
 
 const requiredEnvironmentVariables = [
   'DATABASE_URL',
@@ -20,6 +20,7 @@ export type AppConfig = Readonly<{
     baseUrl: string;
     username: string;
     password: string;
+    customerCode?: string;
   }>;
   requestTimeoutMs: number;
   retryCount: number;
@@ -88,7 +89,11 @@ function urlValue(
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
-  const missing = requiredEnvironmentVariables.filter((name) => !environment[name]?.trim());
+  const useTestDatabase = environment.NODE_ENV === 'test'
+    && Boolean(environment.TEST_DATABASE_URL?.trim());
+  const missing = requiredEnvironmentVariables.filter((name) => (
+    name !== 'DATABASE_URL' || !useTestDatabase
+  ) && !environment[name]?.trim());
 
   if (missing.length > 0) {
     throw new ConfigurationError(
@@ -98,12 +103,15 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   }
 
   return Object.freeze({
-    databaseUrl: urlValue(environment, 'DATABASE_URL', ['postgres:', 'postgresql:']),
+    databaseUrl: useTestDatabase
+      ? urlValue(environment, 'TEST_DATABASE_URL', ['postgres:', 'postgresql:'])
+      : urlValue(environment, 'DATABASE_URL', ['postgres:', 'postgresql:']),
     port: integerValue(environment, 'PORT', 1, 65535),
     urbanebolt: Object.freeze({
       baseUrl: urlValue(environment, 'URBANEBOLT_BASE_URL', ['http:', 'https:']),
       username: requiredString(environment, 'URBANEBOLT_USERNAME'),
-      password: requiredString(environment, 'URBANEBOLT_PASSWORD')
+      password: requiredString(environment, 'URBANEBOLT_PASSWORD'),
+      customerCode: environment.URBANEBOLT_CUSTOMER_CODE?.trim() || undefined
     }),
     requestTimeoutMs: integerValue(environment, 'REQUEST_TIMEOUT_MS', 1),
     retryCount: integerValue(environment, 'RETRY_COUNT', 0),
