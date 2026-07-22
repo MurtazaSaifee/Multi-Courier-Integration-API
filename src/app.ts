@@ -11,6 +11,7 @@ import { createOrderService } from './services/order-service.js';
 
 export type AppDependencies = {
   orderService?: ReturnType<typeof createOrderService>;
+  healthCheck?: () => Promise<void>;
 };
 
 export function createApp(dependencies?: AppDependencies): Express {
@@ -22,12 +23,20 @@ export function createApp(dependencies?: AppDependencies): Express {
     courierRegistry,
     db
   );
+  const healthCheck = dependencies?.healthCheck ?? (async () => {
+    await db.raw('select 1');
+  });
 
   app.use(requestIdMiddleware);
   app.use(express.json());
 
-  app.get('/health', (_request, response) => {
-    response.status(200).json({ status: 'ok' });
+  app.get('/health', async (_request, response, next) => {
+    try {
+      await healthCheck();
+      response.status(200).json({ status: 'ok' });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.use('/api/v1', createOrderRouter(orderService));

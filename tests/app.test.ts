@@ -1,14 +1,25 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../src/app.js';
 
 describe('Express application', () => {
   it('returns a successful health response', async () => {
-    const response = await request(createApp()).get('/health');
+    const healthCheck = vi.fn().mockResolvedValue(undefined);
+    const response = await request(createApp({ healthCheck })).get('/health');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: 'ok' });
+    expect(healthCheck).toHaveBeenCalledOnce();
+  });
+
+  it('returns a normalized error when the database health check fails', async () => {
+    const response = await request(createApp({
+      healthCheck: vi.fn().mockRejectedValue(new Error('database unavailable'))
+    })).get('/health');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.code).toBe('INTERNAL_ERROR');
   });
 
   it('rejects malformed JSON request bodies', async () => {
