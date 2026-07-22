@@ -47,10 +47,10 @@ The `.env.example` file comes pre-filled with working default UrbaneBolt UAT cre
 |---|---|---|
 | `DATABASE_URL` | `postgresql://user:password@localhost:5432/multi_courier` | PostgreSQL connection link |
 | `PORT` | `3000` | Server port |
-| `URBANEBOLT_BASE_URL` | `https://api.urbanebolt.example` | Base URL for UrbaneBolt API |
+| `URBANEBOLT_BASE_URL` | `https://uat.urbanebolt.in` | Base URL for UrbaneBolt UAT API |
 | `URBANEBOLT_USERNAME` | `info@urbanebolt.com` | UrbaneBolt UAT username |
 | `URBANEBOLT_PASSWORD` | `EKIcygsLVV5RCtPZ` | UrbaneBolt UAT password |
-| `URBANEBOLT_CUSTOMER_CODE` | `UB-CUST-100` | UrbaneBolt customer code |
+| `URBANEBOLT_CUSTOMER_CODE` | `UEBCUS0008` | UrbaneBolt UAT customer code |
 | `REQUEST_TIMEOUT_MS` | `5000` | Timeout for HTTP calls (ms) |
 | `RETRY_COUNT` | `2` | Number of retry attempts |
 | `RETRY_DELAY_MS` | `250` | Wait time between retries (ms) |
@@ -139,6 +139,8 @@ npm run test:uat
 
 For detailed request and response examples, see [docs/api_examples.md](docs/api_examples.md) or use the Postman collection at [docs/postman_collection.json](docs/postman_collection.json).
 
+The Postman collection calls this local API, which then calls UrbaneBolt UAT when the UAT variables are configured. Set a fresh `orderId` before creating a new live UAT shipment.
+
 ---
 
 ## Design Choices
@@ -158,6 +160,6 @@ Why I made this choice:
 
 ## Documentation Files
 
-- Architecture overview & database design: [docs/DESIGN.md](docs/DESIGN.md)
+- Architecture overview & database design: [DESIGN.md](DESIGN.md)
 - Curl examples and response samples: [docs/api_examples.md](docs/api_examples.md)
 - Postman collection: [docs/postman_collection.json](docs/postman_collection.json)
