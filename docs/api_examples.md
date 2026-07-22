@@ -1,6 +1,6 @@
 # API Examples & Usage Guide
 
-This guide shows sample `curl` commands and JSON responses for all endpoints in the Multi-Courier Integration API, including real examples for both supported courier partners: **UrbaneBolt** (`urbanebolt`) and **MockCourier** (`mockcourier`).
+This guide shows sample `curl` commands and normalized local API responses for both supported courier partners: **UrbaneBolt** (`urbanebolt`) and **MockCourier** (`mockcourier`).
 
 ---
 
@@ -47,7 +47,7 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
   -d '{
     "order_id": "ORD-2026-UB-001",
     "courier_partner": "urbanebolt",
-    "service_type": "express",
+    "service_type": "NDD",
     "sender": {
       "name": "Acme Warehouse",
       "phone": "+919876543210",
@@ -55,7 +55,7 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
       "street": "Plot 42, Industrial Area Phase 1",
       "city": "Mumbai",
       "state": "Maharashtra",
-      "country": "IN",
+      "country": "India",
       "postal_code": "400001"
     },
     "recipient": {
@@ -65,8 +65,17 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
       "street": "Flat 302, Sunrise Apartments",
       "city": "Bengaluru",
       "state": "Karnataka",
-      "country": "IN",
+      "country": "India",
       "postal_code": "560001"
+    },
+    "return_address": {
+      "name": "Acme Returns",
+      "phone": "+919876543212",
+      "street": "Plot 42, Industrial Area Phase 1",
+      "city": "Mumbai",
+      "state": "Maharashtra",
+      "country": "India",
+      "postal_code": "400001"
     },
     "package": {
       "description": "Electronics - Headphones",
@@ -79,6 +88,11 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
     "payment": {
       "mode": "PREPAID",
       "amount_to_collect": 0
+    },
+    "invoice": {
+      "invoice_number": "ORD-2026-UB-001-INV",
+      "invoice_date": "2026-07-22",
+      "value": 100
     }
   }'
 ```
@@ -88,8 +102,8 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
 {
   "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
-  "courier_order_id": "UB-MANIFEST-98765",
-  "tracking_number": "UB-TRK-12345678",
+  "courier_order_id": "ORD-2026-UB-001",
+  "tracking_number": "200000006959",
   "status": "CREATED"
 }
 ```
@@ -147,14 +161,14 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
 }
 ```
 
-#### Example Response (Idempotent Resubmission - 200 OK):
+#### Example Response (Idempotent Resubmission - 201 Created):
 Sending the exact same payload returns the existing order:
 ```json
 {
   "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
-  "courier_order_id": "UB-MANIFEST-98765",
-  "tracking_number": "UB-TRK-12345678",
+  "courier_order_id": "ORD-2026-UB-001",
+  "tracking_number": "200000006959",
   "status": "CREATED"
 }
 ```
@@ -211,20 +225,15 @@ curl -X GET "http://localhost:3000/api/v1/orders/ORD-2026-UB-001/track" \
 {
   "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
-  "tracking_number": "UB-TRK-12345678",
-  "status": "IN_TRANSIT",
-  "status_updated_at": "2026-07-22T12:30:00.000Z",
+  "tracking_number": "200000006959",
+  "status": "CREATED",
+  "status_updated_at": "2026-07-22T12:47:00.000Z",
   "events": [
     {
       "status": "CREATED",
-      "status_at": "2026-07-22T12:05:00.000Z",
-      "description": "Shipment manifest generated"
-    },
-    {
-      "status": "IN_TRANSIT",
-      "status_at": "2026-07-22T12:30:00.000Z",
-      "location": "Mumbai Hub",
-      "description": "Package scanned at Mumbai Hub"
+      "status_at": "2026-07-22T12:47:00.000Z",
+      "location": "Mumbai",
+      "description": "Shipment Manifested"
     }
   ]
 }
@@ -296,7 +305,7 @@ curl -X POST "http://localhost:3000/api/v1/orders/ORD-2026-UB-001/cancel" \
 {
   "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
-  "tracking_number": "UB-TRK-12345678",
+  "tracking_number": "200000006959",
   "status": "CANCELLED"
 }
 ```
@@ -337,14 +346,14 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
     {
       "order_id": "BULK-2026-UB-01",
       "courier_partner": "urbanebolt",
-      "service_type": "express",
+      "service_type": "NDD",
       "sender": {
         "name": "Acme Warehouse",
         "phone": "+919876543210",
         "street": "Industrial Area",
         "city": "Mumbai",
         "state": "Maharashtra",
-        "country": "IN",
+        "country": "India",
         "postal_code": "400001"
       },
       "recipient": {
@@ -353,16 +362,34 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
         "street": "Main Street 1",
         "city": "Delhi",
         "state": "Delhi",
-        "country": "IN",
+        "country": "India",
         "postal_code": "110001"
       },
+      "return_address": {
+        "name": "Acme Returns",
+        "phone": "+919876543212",
+        "street": "Industrial Area",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "country": "India",
+        "postal_code": "400001"
+      },
       "package": {
-        "description": "Item 1 - Express",
+        "description": "Item 1",
         "pieces": 1,
-        "weight": 1.0
+        "weight": 1.0,
+        "length": 20,
+        "breadth": 15,
+        "height": 10
       },
       "payment": {
-        "mode": "PREPAID"
+        "mode": "PREPAID",
+        "amount_to_collect": 0
+      },
+      "invoice": {
+        "invoice_number": "BULK-2026-UB-01-INV",
+        "invoice_date": "2026-07-22",
+        "value": 100
       }
     },
     {
@@ -408,8 +435,8 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
     "response": {
       "order_id": "BULK-2026-UB-01",
       "courier_partner": "urbanebolt",
-      "courier_order_id": "UB-MANIFEST-990011",
-      "tracking_number": "UB-TRK-990011",
+      "courier_order_id": "BULK-2026-UB-01",
+      "tracking_number": "200000006959",
       "status": "CREATED"
     }
   },
