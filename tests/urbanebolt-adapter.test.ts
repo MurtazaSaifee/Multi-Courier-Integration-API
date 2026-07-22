@@ -275,10 +275,10 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
       });
     });
 
-    it('maps numeric orderNumber and awbNumber from provider into string values', async () => {
+    it('normalizes UrbaneBolt’s numeric AWB into the platform tracking string', async () => {
       const rawResponse = {
         status: 'Success',
-        successResponse: [{ orderNumber: 998877, awbNumber: 11223344 }]
+        successResponse: [{ orderNumber: '998877', awbNumber: 11223344 }]
       };
 
       const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (
@@ -303,13 +303,12 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
       const rawResponse = {
         status: 'Success',
         data: {
-          orderNumber: 'UB-TRACK',
-          awbNumber: 'AWB-TRACK',
-          status: 'In_Transit',
-          status_updated_at: '2026-07-21T10:00:00.000Z',
+          currentStatusCode: 'MAN',
+          currentStatusCodeDescription: 'Shipment Manifested',
+          currentStatusDateTime: '22 Jul 2026, 18:01',
+          currentLocation: 'Mumbai',
           scans: [
-            { status: 'Manifested', date: '2026-07-21T08:00:00.000Z', location: 'Hub 1', description: 'Manifested' },
-            { status: 'In_Transit', date: '2026-07-21T10:00:00.000Z', location: 'Hub 2', description: 'In transit' }
+            { statusCode: 'MAN', statusCodeDescription: 'Shipment Manifested', statusDateTime: '22 Jul 2026, 18:01', currentLocation: 'Mumbai' }
           ]
         }
       };
@@ -329,13 +328,13 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
       const result = await adapter.trackShipment(input);
 
       expect(result.raw_response).toEqual(rawResponse);
-      expect(result.response.status).toBe('IN_TRANSIT');
-      expect(result.response.events).toHaveLength(2);
+      expect(result.response.status).toBe('CREATED');
+      expect(result.response.events).toHaveLength(1);
       expect(result.response.events[0]).toEqual({
         status: 'CREATED',
-        status_at: '2026-07-21T08:00:00.000Z',
-        location: 'Hub 1',
-        description: 'Manifested'
+        status_at: '2026-07-22T12:31:00.000Z',
+        location: 'Mumbai',
+        description: 'Shipment Manifested'
       });
     });
 
@@ -351,8 +350,21 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
       expect(httpClient).not.toHaveBeenCalled();
     });
 
-    it('maps unrecognized provider status to UNKNOWN', async () => {
-      const rawResponse = { status: 'Success', data: { status: 'UNKNOWN_PROVIDER_CODE' } };
+    it('maps an unrecognized UAT provider status to UNKNOWN', async () => {
+      const rawResponse = {
+        status: 'Success',
+        data: {
+          currentStatusCode: 'UNKNOWN_PROVIDER_CODE',
+          currentStatusDateTime: '22 Jul 2026, 18:01',
+          currentLocation: 'Mumbai',
+          scans: [{
+            statusCode: 'UNKNOWN_PROVIDER_CODE',
+            statusCodeDescription: 'Unknown status',
+            statusDateTime: '22 Jul 2026, 18:01',
+            currentLocation: 'Mumbai'
+          }]
+        }
+      };
       const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (
         requestResult(
           options,
@@ -368,13 +380,9 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
       expect(result.response.status).toBe('UNKNOWN');
     });
 
-    it('correctly normalizes standard status values', () => {
-      expect(mapUrbaneBoltStatus('MANIFESTED')).toBe('CREATED');
-      expect(mapUrbaneBoltStatus('PICKED_UP')).toBe('PICKED_UP');
-      expect(mapUrbaneBoltStatus('IN_TRANSIT')).toBe('IN_TRANSIT');
-      expect(mapUrbaneBoltStatus('DELIVERED')).toBe('DELIVERED');
-      expect(mapUrbaneBoltStatus('CANCELLED')).toBe('CANCELLED');
-      expect(mapUrbaneBoltStatus('FAILED')).toBe('FAILED');
+    it('maps only observed UAT status codes', () => {
+      expect(mapUrbaneBoltStatus('MAN')).toBe('CREATED');
+      expect(mapUrbaneBoltStatus('CAN')).toBe('CANCELLED');
       expect(mapUrbaneBoltStatus('UNKNOWN_VALUE')).toBe('UNKNOWN');
     });
   });
@@ -383,7 +391,7 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
     it('maps successful cancellation and captures raw request and response', async () => {
       const rawResponse = {
         status: 'Success',
-        successResponse: [{ orderNumber: 'UB-CANCEL', awbNumber: 'AWB-CANCEL', message: 'Cancelled' }]
+        successResponse: [{ orderNumber: 'UB-CANCEL', awb: 'AWB-CANCEL', message: 'Cancelled' }]
       };
 
       const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (
@@ -412,7 +420,7 @@ describe('UrbaneBoltAdapter comprehensive suite', () => {
     it('treats already-cancelled response as a successful no-op', async () => {
       const rawResponse = {
         status: 'Success',
-        failureResponse: [{ orderNumber: 'UB-NOOP', awbNumber: 'AWB-NOOP', message: 'Shipment already cancelled' }]
+        failureResponse: [{ orderNumber: 'UB-NOOP', awb: 'AWB-NOOP', message: 'Shipment already cancelled' }]
       };
 
       const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (

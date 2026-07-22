@@ -43,12 +43,14 @@ Here is how a request flows through the app:
 Every courier adapter implements three main methods:
 
 - `createShipment(request)`: Takes standard order data, converts it to the courier's format, sends the request, and returns a unified response.
-- `trackShipment(trackingNumber)`: Fetches tracking status from the courier and maps provider status codes (like `MANIFEST_CREATED` or `OUT_FOR_DELIVERY`) to standard statuses (`PENDING`, `IN_TRANSIT`, `DELIVERED`, `CANCELLED`, `FAILED`, `UNKNOWN`).
+- `trackShipment(input)`: Fetches tracking status from the courier and maps provider-specific codes to standard statuses (`CREATED`, `PICKED_UP`, `IN_TRANSIT`, `DELIVERED`, `CANCELLED`, `FAILED`, `UNKNOWN`).
 - `cancelShipment(trackingNumber)`: Sends a cancel request to the courier. If the order is already cancelled, it returns a clean success response without throwing an error.
 
 ### UrbaneBolt Adapter Details
 - **Token Login**: Logs in using configured credentials and saves the auth token in memory until it expires. If an API call fails with a 401 Unauthorized error, it clears the token and tries logging in again once.
 - **Security**: Auth tokens and passwords are only stored in memory. They are never saved to the database or written to log files.
+- **Strict UAT contract**: The adapter reads the published and live-tested UrbaneBolt UAT fields directly. For example, tracking uses `data.currentStatusCode`, `currentStatusDateTime`, and `scans`; observed `MAN` maps to `CREATED` and `CAN` maps to `CANCELLED`. Unrecognised provider codes map to `UNKNOWN`.
+- **Boundary ownership**: The shared courier interface remains generic. UrbaneBolt request names and response fields stay inside this adapter rather than being made generic across the application.
 
 ---
 
@@ -65,7 +67,7 @@ Stores current order state and details:
 - `courier_partner`: Courier name (e.g. `urbanebolt`)
 - `courier_order_id`: Order ID returned by the courier
 - `tracking_number`: Shipment tracking number
-- `status`: Current standard status (`PENDING`, `IN_TRANSIT`, `DELIVERED`, `CANCELLED`, `FAILED`)
+- `status`: Current standard status (`CREATED`, `PICKED_UP`, `IN_TRANSIT`, `DELIVERED`, `CANCELLED`, `FAILED`, `UNKNOWN`)
 - `service_type`: Delivery tier (e.g. `EXPRESS`, `STANDARD`)
 - `normalized_request`: JSON snapshot of the standard request payload
 - `raw_courier_request`: Raw JSON payload sent to the courier

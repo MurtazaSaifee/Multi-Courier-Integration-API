@@ -46,9 +46,15 @@ describe('Courier Authentication Failure Handling & Refresh (P7-T2)', () => {
             statusCode: 200,
             payload: {
               data: {
-                awbNumber: 'AWB-100',
-                status: 'IN_TRANSIT',
-                statusDate: '2026-07-21T12:00:00.000Z'
+                currentStatusCode: 'MAN',
+                currentStatusDateTime: '22 Jul 2026, 18:01',
+                currentLocation: 'Mumbai',
+                scans: [{
+                  statusCode: 'MAN',
+                  statusCodeDescription: 'Shipment Manifested',
+                  statusDateTime: '22 Jul 2026, 18:01',
+                  currentLocation: 'Mumbai'
+                }]
               }
             }
           }
@@ -65,7 +71,7 @@ describe('Courier Authentication Failure Handling & Refresh (P7-T2)', () => {
 
     const result = await adapter.trackShipment({ courier_order_id: 'UB-100', tracking_number: 'AWB-100' });
 
-    expect(result.response.status).toBe('IN_TRANSIT');
+    expect(result.response.status).toBe('CREATED');
     expect(authCount).toBe(2); // 1 initial auth + 1 refresh auth
     expect(trackCount).toBe(2); // 1 rejected track + 1 retried track
   });

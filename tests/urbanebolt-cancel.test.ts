@@ -39,7 +39,7 @@ describe('UrbaneBolt cancellation mapping', () => {
       successResponse: [
         {
           orderNumber: 'UB-100',
-          awbNumber: 'AWB-100',
+          awb: 'AWB-100',
           message: 'Cancelled'
         }
       ],
@@ -96,7 +96,7 @@ describe('UrbaneBolt cancellation mapping', () => {
       failureResponse: [
         {
           orderNumber: 'UB-101',
-          awbNumber: 'AWB-101',
+          awb: 'AWB-101',
           message: 'Shipment already cancelled'
         }
       ]
@@ -135,7 +135,7 @@ describe('UrbaneBolt cancellation mapping', () => {
       failureResponse: [
         {
           orderNumber: 'UB-102',
-          awbNumber: 'AWB-102',
+          awb: 'AWB-102',
           message: 'Cannot cancel shipment after pickup'
         }
       ]

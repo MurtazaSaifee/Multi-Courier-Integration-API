@@ -38,28 +38,16 @@ describe('UrbaneBolt tracking mapping', () => {
     const rawResponse = {
       status: 'Success',
       data: {
-        orderNumber: 'UB-999',
-        awbNumber: 'AWB-999',
-        status: 'In_Transit',
-        status_updated_at: '2026-07-21T10:00:00.000Z',
+        currentStatusCode: 'MAN',
+        currentStatusCodeDescription: 'Shipment Manifested',
+        currentStatusDateTime: '22 Jul 2026, 18:01',
+        currentLocation: 'Mumbai',
         scans: [
           {
-            status: 'Manifested',
-            date: '2026-07-21T08:00:00.000Z',
-            location: 'Mumbai Hub',
-            description: 'Order manifested'
-          },
-          {
-            status: 'Picked_Up',
-            date: '2026-07-21T09:00:00.000Z',
-            location: 'Mumbai Facility',
-            description: 'Package picked up'
-          },
-          {
-            status: 'In_Transit',
-            date: '2026-07-21T10:00:00.000Z',
-            location: 'En route to Pune',
-            description: 'In transit to destination'
+            statusCode: 'MAN',
+            statusCodeDescription: 'Shipment Manifested',
+            statusDateTime: '22 Jul 2026, 18:01',
+            currentLocation: 'Mumbai'
           }
         ]
       }
@@ -101,26 +89,14 @@ describe('UrbaneBolt tracking mapping', () => {
         order_id: 'UB-999',
         courier_partner: 'urbanebolt',
         tracking_number: 'AWB-999',
-        status: 'IN_TRANSIT',
-        status_updated_at: '2026-07-21T10:00:00.000Z',
+        status: 'CREATED',
+        status_updated_at: '2026-07-22T12:31:00.000Z',
         events: [
           {
             status: 'CREATED',
-            status_at: '2026-07-21T08:00:00.000Z',
-            location: 'Mumbai Hub',
-            description: 'Order manifested'
-          },
-          {
-            status: 'PICKED_UP',
-            status_at: '2026-07-21T09:00:00.000Z',
-            location: 'Mumbai Facility',
-            description: 'Package picked up'
-          },
-          {
-            status: 'IN_TRANSIT',
-            status_at: '2026-07-21T10:00:00.000Z',
-            location: 'En route to Pune',
-            description: 'In transit to destination'
+            status_at: '2026-07-22T12:31:00.000Z',
+            location: 'Mumbai',
+            description: 'Shipment Manifested'
           }
         ]
       },
@@ -149,8 +125,15 @@ describe('UrbaneBolt tracking mapping', () => {
     const rawResponse = {
       status: 'Success',
       data: {
-        awbNumber: 'AWB-CUSTOM',
-        status: 'CUSTOM_INTERNAL_STATUS'
+        currentStatusCode: 'CUSTOM_INTERNAL_STATUS',
+        currentStatusDateTime: '22 Jul 2026, 18:01',
+        currentLocation: 'Mumbai',
+        scans: [{
+          statusCode: 'CUSTOM_INTERNAL_STATUS',
+          statusCodeDescription: 'Unknown status',
+          statusDateTime: '22 Jul 2026, 18:01',
+          currentLocation: 'Mumbai'
+        }]
       }
     };
 
@@ -173,13 +156,100 @@ describe('UrbaneBolt tracking mapping', () => {
     expect(result.response.status).toBe('UNKNOWN');
   });
 
-  it('correctly maps all standard status strings', () => {
-    expect(mapUrbaneBoltStatus('MANIFESTED')).toBe('CREATED');
-    expect(mapUrbaneBoltStatus('PICKED_UP')).toBe('PICKED_UP');
-    expect(mapUrbaneBoltStatus('In_Transit')).toBe('IN_TRANSIT');
-    expect(mapUrbaneBoltStatus('DELIVERED')).toBe('DELIVERED');
-    expect(mapUrbaneBoltStatus('Cancelled')).toBe('CANCELLED');
-    expect(mapUrbaneBoltStatus('FAILED')).toBe('FAILED');
+  it('maps the published UAT tracking response shape', async () => {
+    const rawResponse = {
+      status: 'Success',
+      data: {
+        currentStatusCode: 'MAN',
+        currentStatusCodeDescription: 'Shipment Manifested',
+        currentStatusDateTime: '22 Jul 2026, 18:01',
+        currentLocation: 'Mumbai',
+        scans: [
+          {
+            statusCode: 'MAN',
+            statusCodeDescription: 'Shipment Manifested',
+            statusDateTime: '22 Jul 2026, 18:01',
+            currentLocation: 'Mumbai'
+          }
+        ]
+      }
+    };
+
+    const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (
+      requestResult(
+        options,
+        options.operation === 'authenticate'
+          ? { access_token: 'track-token', token_type: 'Bearer', expires_in: 60 }
+          : rawResponse
+      )
+    ));
+
+    const adapter = new UrbaneBoltAdapter({
+      config: urbaneBoltTestConfig,
+      httpClient
+    });
+
+    const result = await adapter.trackShipment({ courier_order_id: 'UB-UAT', tracking_number: 'AWB-UAT' });
+
+    expect(result.response.status).toBe('CREATED');
+    expect(result.response.events).toEqual([
+      expect.objectContaining({
+        status: 'CREATED',
+        location: 'Mumbai',
+        description: 'Shipment Manifested'
+      })
+    ]);
+    expect(result.response.events[0]?.status_at).toMatch(/^2026-07-22T/);
+  });
+
+  it('maps the observed UAT status codes and leaves unobserved values unknown', () => {
+    expect(mapUrbaneBoltStatus('MAN')).toBe('CREATED');
+    expect(mapUrbaneBoltStatus('CAN')).toBe('CANCELLED');
+    expect(mapUrbaneBoltStatus('MANIFESTED')).toBe('UNKNOWN');
     expect(mapUrbaneBoltStatus('SOMETHING_ELSE')).toBe('UNKNOWN');
+  });
+
+  it('rejects a response that does not use the UAT tracking shape', async () => {
+    const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (
+      requestResult(options, options.operation === 'authenticate'
+        ? { access_token: 'track-token', token_type: 'Bearer', expires_in: 60 }
+        : { status: 'Success', data: { status: 'MANIFESTED' } })
+    ));
+    const adapter = new UrbaneBoltAdapter({ config: urbaneBoltTestConfig, httpClient });
+
+    await expect(adapter.trackShipment({ courier_order_id: 'UB-INVALID', tracking_number: 'AWB-INVALID' }))
+      .rejects.toMatchObject({ operation: 'track', kind: 'client' });
+  });
+
+  it('preserves a cancellation scan with an empty UAT location', async () => {
+    const rawResponse = {
+      status: 'Success',
+      data: {
+        currentStatusCode: 'CAN',
+        currentStatusDateTime: '22 Jul 2026, 18:01',
+        currentLocation: '',
+        scans: [{
+          statusCode: 'CAN',
+          statusCodeDescription: 'Cancelled',
+          statusDateTime: '22 Jul 2026, 18:01',
+          currentLocation: ''
+        }]
+      }
+    };
+    const httpClient = vi.fn<ProviderHttpClient>().mockImplementation(async (options) => (
+      requestResult(options, options.operation === 'authenticate'
+        ? { access_token: 'track-token', token_type: 'Bearer', expires_in: 60 }
+        : rawResponse)
+    ));
+    const adapter = new UrbaneBoltAdapter({ config: urbaneBoltTestConfig, httpClient });
+
+    const result = await adapter.trackShipment({ courier_order_id: 'UB-CANCELLED', tracking_number: 'AWB-CANCELLED' });
+
+    expect(result.response.status).toBe('CANCELLED');
+    expect(result.response.events[0]).toEqual({
+      status: 'CANCELLED',
+      status_at: '2026-07-22T12:31:00.000Z',
+      description: 'Cancelled'
+    });
   });
 });

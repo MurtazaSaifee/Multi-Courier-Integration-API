@@ -52,6 +52,49 @@ type AuthenticatedRequestOptions = Omit<ProviderHttpRequestOptions, 'headers'> &
 
 type UrbaneBoltManifestPayload = Record<string, unknown>;
 
+type UrbaneBoltAuthenticationResponse = {
+  access_token?: unknown;
+  expires_in?: unknown;
+  token_type?: unknown;
+};
+
+type UrbaneBoltManifestResponse = {
+  successResponse?: unknown;
+};
+
+type UrbaneBoltManifestSuccessItem = {
+  orderNumber?: unknown;
+  awbNumber?: unknown;
+};
+
+type UrbaneBoltTrackingScan = {
+  statusCode?: unknown;
+  statusCodeDescription?: unknown;
+  statusDateTime?: unknown;
+  currentLocation?: unknown;
+};
+
+type UrbaneBoltTrackingData = {
+  currentStatusCode?: unknown;
+  currentStatusDateTime?: unknown;
+  scans?: unknown;
+};
+
+type UrbaneBoltTrackingResponse = {
+  data?: unknown;
+};
+
+type UrbaneBoltCancellationResponse = {
+  successResponse?: unknown;
+  failureResponse?: unknown;
+};
+
+type UrbaneBoltCancellationItem = {
+  orderNumber?: unknown;
+  awb?: unknown;
+  message?: unknown;
+};
+
 const URBANEBOLT_SERVICE_TYPES = ['SSDD', 'SDD', 'NDD', 'ATA', 'PTP', '2HR'] as const;
 
 function mapAddress(
@@ -164,13 +207,13 @@ function mapCreateResponse(
   rawRequestPayload: unknown,
   rawResponsePayload: unknown
 ): CourierCreateResult {
-  const response = asRecord(rawResponsePayload);
+  const response = asUrbaneBoltManifestResponse(rawResponsePayload);
   const successfulShipments = response?.successResponse;
   const successfulShipment = Array.isArray(successfulShipments)
-    ? asRecord(successfulShipments[0])
+    ? asUrbaneBoltManifestSuccessItem(successfulShipments[0])
     : undefined;
-  const courierOrderId = stringValue(successfulShipment?.orderNumber);
-  const trackingNumber = stringValue(successfulShipment?.awbNumber);
+  const courierOrderId = requiredString(successfulShipment?.orderNumber);
+  const trackingNumber = requiredUrbaneBoltIdentifier(successfulShipment?.awbNumber);
 
   if (!courierOrderId || !trackingNumber) {
     throw createResponseMappingError(rawRequestPayload, rawResponsePayload);
@@ -190,116 +233,66 @@ function mapCreateResponse(
 }
 
 export function mapUrbaneBoltStatus(rawStatus: unknown): NormalizedStatus {
-  if (typeof rawStatus !== 'string' && typeof rawStatus !== 'number') {
+  if (typeof rawStatus !== 'string') {
     return 'UNKNOWN';
   }
 
-  const normalized = String(rawStatus).trim().toUpperCase().replace(/[\s_-]+/g, '_');
+  const normalized = rawStatus.trim().toUpperCase();
 
   switch (normalized) {
-    case 'CREATED':
-    case 'MANIFESTED':
-    case 'BOOKED':
-    case 'NEW':
-    case 'ORDER_CREATED':
+    case 'MAN':
       return 'CREATED';
 
-    case 'PICKED_UP':
-    case 'PICKUP':
-    case 'PICKED':
-    case 'OUT_FOR_PICKUP':
-    case 'PU':
-      return 'PICKED_UP';
-
-    case 'IN_TRANSIT':
-    case 'IN_TRANSIT_LOCATION':
-    case 'TRANSIT':
-    case 'DISPATCHED':
-    case 'OUT_FOR_DELIVERY':
-    case 'REACHED_HUB':
-    case 'HUB_REACHED':
-      return 'IN_TRANSIT';
-
-    case 'DELIVERED':
-    case 'DLVD':
-    case 'COMPLETED':
-      return 'DELIVERED';
-
-    case 'CANCELLED':
-    case 'CANCELED':
-    case 'CANCEL':
-    case 'CNCL':
+    case 'CAN':
       return 'CANCELLED';
-
-    case 'FAILED':
-    case 'FAILURE':
-    case 'UNDELIVERED':
-    case 'RTO':
-    case 'RETURNED':
-    case 'REJECTED':
-      return 'FAILED';
 
     default:
       return 'UNKNOWN';
   }
 }
 
-function parseIsoDateString(value: unknown): string | undefined {
-  if (typeof value === 'string' || typeof value === 'number') {
-    const timestamp = typeof value === 'number'
-      ? (value > 1_000_000_000_000 ? value : value * 1000)
-      : Date.parse(value);
-    const parsed = new Date(timestamp);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-  return undefined;
-}
-
-function mapTrackingEvent(scanPayload: unknown, fallbackStatusAt: string): TrackingEvent | undefined {
-  const scan = asRecord(scanPayload);
-  if (!scan) {
+function parseUrbaneBoltTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
     return undefined;
   }
 
-  const rawStatus = firstValue([scan], [
-    'status',
-    'statusCode',
-    'status_code',
-    'scanType',
-    'scan_type',
-    'activity',
-    'event'
-  ]);
-  const status = mapUrbaneBoltStatus(rawStatus);
+  const match = /^(\d{1,2}) ([A-Za-z]{3}) (\d{4}), (\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) {
+    return undefined;
+  }
 
-  const rawDate = firstValue([scan], [
-    'date',
-    'scanDate',
-    'scan_date',
-    'statusDate',
-    'status_date',
-    'timestamp',
-    'time',
-    'updatedAt',
-    'updated_at'
-  ]);
-  const status_at = parseIsoDateString(rawDate) ?? fallbackStatusAt;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months.indexOf(match[2]);
+  if (month < 0) {
+    return undefined;
+  }
 
-  const location = stringValue(
-    firstValue([scan], ['location', 'scanLocation', 'scan_location', 'city', 'hub'])
-  );
+  const parsed = new Date(Date.UTC(
+    Number(match[3]),
+    month,
+    Number(match[1]),
+    Number(match[4]) - 5,
+    Number(match[5]) - 30
+  ));
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
 
-  const description = stringValue(
-    firstValue([scan], ['description', 'remarks', 'message', 'instructions', 'scanDescription', 'scan_description'])
-  );
+function mapTrackingEvent(scanPayload: unknown): TrackingEvent | undefined {
+  const scan = asUrbaneBoltTrackingScan(scanPayload);
+  const status = mapUrbaneBoltStatus(scan?.statusCode);
+  const status_at = parseUrbaneBoltTimestamp(scan?.statusDateTime);
+  const location = optionalString(scan?.currentLocation);
+  const description = requiredString(scan?.statusCodeDescription);
+
+  if (!scan || !status_at || !description) {
+    return undefined;
+  }
 
   return {
     status,
     status_at,
     ...(location === undefined ? {} : { location }),
-    ...(description === undefined ? {} : { description })
+    description
   };
 }
 
@@ -307,66 +300,26 @@ function mapTrackResponse(
   input: TrackShipmentInput,
   rawResponsePayload: unknown
 ): CourierTrackResult {
-  const sources = responseSources(rawResponsePayload);
+  const response = asUrbaneBoltTrackingResponse(rawResponsePayload);
+  const data = asUrbaneBoltTrackingData(response?.data);
+  const status_updated_at = parseUrbaneBoltTimestamp(data?.currentStatusDateTime);
 
-  const orderId = stringValue(
-    firstValue(sources, ['orderNumber', 'order_number', 'orderId', 'order_id', 'merchant_order_id'])
-  ) ?? input.courier_order_id ?? input.tracking_number;
-
-  const trackingNumber = stringValue(
-    firstValue(sources, ['awbNumber', 'awb_number', 'awb', 'tracking_number', 'trackingNumber'])
-  ) ?? input.tracking_number;
-
-  const rawStatus = firstValue(sources, [
-    'status',
-    'statusCode',
-    'status_code',
-    'currentStatus',
-    'current_status',
-    'shipmentStatus',
-    'shipment_status',
-    'state'
-  ]);
-
-  const status = mapUrbaneBoltStatus(rawStatus);
-
-  const rawUpdatedAt = firstValue(sources, [
-    'status_updated_at',
-    'statusUpdatedAt',
-    'statusDate',
-    'status_date',
-    'updatedAt',
-    'updated_at',
-    'timestamp',
-    'date'
-  ]);
-  const status_updated_at = parseIsoDateString(rawUpdatedAt) ?? new Date().toISOString();
-
-  let scansArray: unknown[] | undefined;
-  for (const source of sources) {
-    const candidate = firstValue([source], ['scans', 'scan_history', 'history', 'events', 'tracking_history']);
-    if (Array.isArray(candidate)) {
-      scansArray = candidate;
-      break;
-    }
+  if (!data || !status_updated_at || !Array.isArray(data.scans)) {
+    throw invalidProviderResponse('track', 'Courier track response did not match the UrbaneBolt UAT shape', rawResponsePayload);
   }
 
-  const events: TrackingEvent[] = [];
-  if (Array.isArray(scansArray)) {
-    for (const scanItem of scansArray) {
-      const event = mapTrackingEvent(scanItem, status_updated_at);
-      if (event) {
-        events.push(event);
-      }
-    }
+  const mappedEvents = data.scans.map(mapTrackingEvent);
+  if (mappedEvents.some((event) => event === undefined)) {
+    throw invalidProviderResponse('track', 'Courier track response contained an invalid UrbaneBolt scan', rawResponsePayload);
   }
+  const events = mappedEvents as TrackingEvent[];
 
   return {
     response: {
-      order_id: orderId,
+      order_id: input.courier_order_id ?? input.tracking_number,
       courier_partner: URBANEBOLT_COURIER_PARTNER,
-      tracking_number: trackingNumber,
-      status,
+      tracking_number: input.tracking_number,
+      status: mapUrbaneBoltStatus(data.currentStatusCode),
       status_updated_at,
       events
     },
@@ -389,23 +342,19 @@ function mapCancelResponse(
   rawRequestPayload: unknown,
   rawResponsePayload: unknown
 ): CourierCancelResult {
-  const root = asRecord(rawResponsePayload);
-  const sources = responseSources(rawResponsePayload);
-
-  const successfulItems = root?.successResponse;
+  const response = asUrbaneBoltCancellationResponse(rawResponsePayload);
+  const successfulItems = response?.successResponse;
   const successfulItem = Array.isArray(successfulItems) && successfulItems.length > 0
-    ? asRecord(successfulItems[0])
+    ? asUrbaneBoltCancellationItem(successfulItems[0])
     : undefined;
 
-  const courierOrderId = stringValue(
-    successfulItem?.orderNumber ?? firstValue(sources, ['orderNumber', 'order_number', 'orderId', 'order_id'])
-  ) ?? input.courier_order_id ?? input.tracking_number;
-
-  const trackingNumber = stringValue(
-    successfulItem?.awbNumber ?? firstValue(sources, ['awbNumber', 'awb_number', 'awb', 'tracking_number'])
-  ) ?? input.tracking_number;
-
   if (successfulItem) {
+    const courierOrderId = requiredString(successfulItem.orderNumber);
+    const trackingNumber = requiredUrbaneBoltIdentifier(successfulItem.awb);
+    if (!courierOrderId || !trackingNumber) {
+      throw invalidProviderResponse('cancel', 'Courier cancel response did not contain UrbaneBolt shipment identifiers', rawResponsePayload);
+    }
+
     return {
       response: {
         order_id: courierOrderId,
@@ -417,21 +366,19 @@ function mapCancelResponse(
     };
   }
 
-  const failureItems = root?.failureResponse ?? root?.errorResponse ?? root?.errors;
+  const failureItems = response?.failureResponse;
   const failureItem = Array.isArray(failureItems) && failureItems.length > 0
-    ? asRecord(failureItems[0])
+    ? asUrbaneBoltCancellationItem(failureItems[0])
     : undefined;
 
-  const failureMsg = stringValue(
-    failureItem?.message ?? failureItem?.error ?? failureItem?.reason ?? root?.message ?? root?.error
-  );
+  const failureMsg = requiredString(failureItem?.message);
 
   if (failureMsg && isAlreadyCancelledMessage(failureMsg)) {
     return {
       response: {
-        order_id: courierOrderId,
+        order_id: input.courier_order_id ?? input.tracking_number,
         courier_partner: URBANEBOLT_COURIER_PARTNER,
-        tracking_number: trackingNumber,
+        tracking_number: input.tracking_number,
         status: 'CANCELLED'
       },
       raw_response: rawResponsePayload
@@ -469,80 +416,85 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function firstValue(
-  sources: readonly Record<string, unknown>[],
-  keys: readonly string[]
-): unknown {
-  for (const source of sources) {
-    for (const key of keys) {
-      if (source[key] !== undefined && source[key] !== null) {
-        return source[key];
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function stringValue(value: unknown): string | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(value);
-  }
+function requiredString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function responseSources(payload: unknown): Record<string, unknown>[] {
-  const root = asRecord(payload);
-  const nested = root ? asRecord(root.data) : undefined;
-
-  if (!root) {
-    return [];
-  }
-
-  return nested ? [nested, root] : [root];
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function expirationDate(payload: unknown): Date | undefined {
-  const sources = responseSources(payload);
-  const expiresAt = firstValue(sources, ['expires_at', 'expiresAt']);
-
-  if (typeof expiresAt === 'string' || typeof expiresAt === 'number') {
-    const timestamp = typeof expiresAt === 'number'
-      ? expiresAt > 1_000_000_000_000 ? expiresAt : expiresAt * 1000
-      : Date.parse(expiresAt);
-    const parsed = new Date(timestamp);
-
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed;
-    }
+function requiredUrbaneBoltIdentifier(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
   }
-
-  const expiresIn = firstValue(sources, ['expires_in', 'expiresIn', 'expires']);
-  const seconds = typeof expiresIn === 'number'
-    ? expiresIn
-    : typeof expiresIn === 'string' ? Number(expiresIn) : Number.NaN;
-
-  if (Number.isFinite(seconds) && seconds > 0) {
-    return new Date(Date.now() + seconds * 1000);
-  }
-
-  return undefined;
+  return requiredString(value);
 }
 
 function parseAuthenticationResult(payload: unknown): CourierAuthenticationResult | undefined {
-  const sources = responseSources(payload);
-  const accessToken = stringValue(firstValue(sources, ['access_token', 'accessToken', 'token']));
-  const expiresAt = expirationDate(payload);
+  const response = asUrbaneBoltAuthenticationResponse(payload);
+  const accessToken = requiredString(response?.access_token);
+  const expiresIn = response?.expires_in;
+  const tokenType = requiredString(response?.token_type);
+  const expiresAt = typeof expiresIn === 'number' && Number.isFinite(expiresIn) && expiresIn > 0
+    ? new Date(Date.now() + expiresIn * 1000)
+    : undefined;
 
-  if (!accessToken || !expiresAt || expiresAt.getTime() <= Date.now()) {
+  if (!accessToken || !tokenType || !expiresAt || expiresAt.getTime() <= Date.now()) {
     return undefined;
   }
 
   return {
     access_token: accessToken,
-    token_type: stringValue(firstValue(sources, ['token_type', 'tokenType'])) ?? 'Bearer',
+    token_type: tokenType,
     expires_at: expiresAt
   };
+}
+
+function asUrbaneBoltAuthenticationResponse(value: unknown): UrbaneBoltAuthenticationResponse | undefined {
+  return asRecord(value) as UrbaneBoltAuthenticationResponse | undefined;
+}
+
+function asUrbaneBoltManifestResponse(value: unknown): UrbaneBoltManifestResponse | undefined {
+  return asRecord(value) as UrbaneBoltManifestResponse | undefined;
+}
+
+function asUrbaneBoltManifestSuccessItem(value: unknown): UrbaneBoltManifestSuccessItem | undefined {
+  return asRecord(value) as UrbaneBoltManifestSuccessItem | undefined;
+}
+
+function asUrbaneBoltTrackingResponse(value: unknown): UrbaneBoltTrackingResponse | undefined {
+  return asRecord(value) as UrbaneBoltTrackingResponse | undefined;
+}
+
+function asUrbaneBoltTrackingData(value: unknown): UrbaneBoltTrackingData | undefined {
+  return asRecord(value) as UrbaneBoltTrackingData | undefined;
+}
+
+function asUrbaneBoltTrackingScan(value: unknown): UrbaneBoltTrackingScan | undefined {
+  return asRecord(value) as UrbaneBoltTrackingScan | undefined;
+}
+
+function asUrbaneBoltCancellationResponse(value: unknown): UrbaneBoltCancellationResponse | undefined {
+  return asRecord(value) as UrbaneBoltCancellationResponse | undefined;
+}
+
+function asUrbaneBoltCancellationItem(value: unknown): UrbaneBoltCancellationItem | undefined {
+  return asRecord(value) as UrbaneBoltCancellationItem | undefined;
+}
+
+function invalidProviderResponse(
+  operation: CourierOperation,
+  message: string,
+  rawResponsePayload: unknown
+): CourierProviderError {
+  return new CourierProviderError({
+    operation,
+    kind: 'client',
+    message,
+    retryable: false,
+    rawResponsePayload
+  });
 }
 
 function invalidAuthenticationResponse(): CourierProviderError {
