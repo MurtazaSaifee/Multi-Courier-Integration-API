@@ -138,4 +138,36 @@ describe('Normalized Failures & Failure Persistence (P7-T3)', () => {
     await expect(service.createOrder(sampleRequest)).rejects.toThrow(CourierUnavailableError);
     expect(mockAdapter.createShipment).toHaveBeenCalledTimes(1); // Still only 1 call to courier!
   });
+
+  it('persists a plain-text provider response as JSON instead of turning it into an internal error', async () => {
+    const request = { ...sampleRequest, order_id: 'FAIL-INT-TEXT-301' };
+    const mockAdapter: CourierAdapter = {
+      courierPartner: 'urbanebolt',
+      createShipment: vi.fn().mockRejectedValue(
+        new CourierProviderError({
+          operation: 'create',
+          kind: 'client',
+          message: 'Courier returned a plain-text rejection',
+          retryable: false,
+          rawRequestPayload: { orderNumber: request.order_id },
+          rawResponsePayload: 'Pincode not serviceable'
+        })
+      ),
+      trackShipment: vi.fn(),
+      cancelShipment: vi.fn()
+    };
+
+    const service = createOrderService(
+      createOrderRepository(db),
+      createTrackingHistoryRepository(db),
+      createCourierRegistry([mockAdapter]),
+      db
+    );
+
+    await expect(service.createOrder(request)).rejects.toThrow(CourierRejectedError);
+
+    const storedOrder = await createOrderRepository(db).findByMerchantOrderId(request.order_id);
+    expect(storedOrder?.status).toBe('FAILED');
+    expect(storedOrder?.failure_response_payload).toBe('Pincode not serviceable');
+  });
 });
