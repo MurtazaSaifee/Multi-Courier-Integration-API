@@ -1,13 +1,13 @@
 # Multi-Courier Integration API
 
-A Node.js and TypeScript backend service that connects to different courier providers (starting with UrbaneBolt) through a single unified API.
+A Node.js and TypeScript backend service that connects to different courier providers (including UrbaneBolt and MockCourier) through a single unified API.
 
 ---
 
 ## What This Service Does
 
 - **Single REST API**: Create shipments, track packages, cancel orders, and send bulk orders using one standard set of endpoints.
-- **Pluggable Couriers**: All courier-specific logic (like UrbaneBolt's API format, login auth, and error messages) is kept inside its own adapter module.
+- **Pluggable Couriers**: All courier-specific logic (e.g. UrbaneBolt and MockCourier adapters) is isolated behind clean adapter implementations, allowing new couriers to be added without touching core business logic or HTTP endpoints.
 - **Database Tracking**: Stores all orders and step-by-step package tracking history in PostgreSQL using Knex.js.
 - **Idempotency**: Prevents creating duplicate orders if the same request is sent twice.
 - **Retries & Auth Handling**: Automatically retries transient network errors and refreshes expired login tokens.

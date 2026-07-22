@@ -1,6 +1,6 @@
 # API Examples & Usage Guide
 
-This guide shows sample `curl` commands and JSON responses for all endpoints in the Multi-Courier Integration API.
+This guide shows sample `curl` commands and JSON responses for all endpoints in the Multi-Courier Integration API, including real examples for both supported courier partners: **UrbaneBolt** (`urbanebolt`) and **MockCourier** (`mockcourier`).
 
 ---
 
@@ -9,7 +9,7 @@ This guide shows sample `curl` commands and JSON responses for all endpoints in 
 | Variable | Example | What it is |
 |---|---|---|
 | `{{baseUrl}}` | `http://localhost:3000` | The base URL of the API server |
-| `{{orderId}}` | `ORD-2026-0722-001` | The unique order ID |
+| `{{orderId}}` | `ORD-2026-UB-001` | The unique order ID |
 
 ---
 
@@ -36,14 +36,16 @@ curl -X GET "http://localhost:3000/health" \
 ## 2. Create Order / Shipment
 
 ### `POST /api/v1/orders`
-Creates a new shipment with a courier partner (e.g. `urbanebolt`).
+Creates a new shipment with a specified courier partner (`urbanebolt` or `mockcourier`).
 
-#### Example Request (Success Case):
+### 2.1 UrbaneBolt Provider Example (`courier_partner: "urbanebolt"`)
+
+#### Example Request:
 ```bash
 curl -X POST "http://localhost:3000/api/v1/orders" \
   -H "Content-Type: application/json" \
   -d '{
-    "order_id": "ORD-2026-0722-001",
+    "order_id": "ORD-2026-UB-001",
     "courier_partner": "urbanebolt",
     "service_type": "express",
     "sender": {
@@ -84,7 +86,7 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
 #### Example Response (201 Created):
 ```json
 {
-  "order_id": "ORD-2026-0722-001",
+  "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
   "courier_order_id": "UB-MANIFEST-98765",
   "tracking_number": "UB-TRK-12345678",
@@ -92,11 +94,64 @@ curl -X POST "http://localhost:3000/api/v1/orders" \
 }
 ```
 
-#### Example Response (Sending Same Request Again - 200 OK):
-If you re-send the exact same payload with `ORD-2026-0722-001`, the API returns the existing order instead of making a duplicate shipment:
+### 2.2 MockCourier Provider Example (`courier_partner: "mockcourier"`)
+
+#### Example Request:
+```bash
+curl -X POST "http://localhost:3000/api/v1/orders" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "order_id": "ORD-2026-MC-001",
+    "courier_partner": "mockcourier",
+    "service_type": "standard",
+    "sender": {
+      "name": "Logistics Depot",
+      "phone": "+919876543210",
+      "email": "depot@example.com",
+      "street": "Warehouse Complex A",
+      "city": "Delhi",
+      "state": "Delhi",
+      "country": "IN",
+      "postal_code": "110001"
+    },
+    "recipient": {
+      "name": "John Smith",
+      "phone": "+919811122233",
+      "email": "john.smith@example.com",
+      "street": "10 Park Street",
+      "city": "Kolkata",
+      "state": "West Bengal",
+      "country": "IN",
+      "postal_code": "700016"
+    },
+    "package": {
+      "description": "Books & Stationery",
+      "pieces": 2,
+      "weight": 2.0
+    },
+    "payment": {
+      "mode": "PREPAID",
+      "amount_to_collect": 0
+    }
+  }'
+```
+
+#### Example Response (201 Created):
 ```json
 {
-  "order_id": "ORD-2026-0722-001",
+  "order_id": "ORD-2026-MC-001",
+  "courier_partner": "mockcourier",
+  "courier_order_id": "MOCK-ORD-ORD-2026-MC-001",
+  "tracking_number": "MOCK-TRK-ORD-2026-MC-001",
+  "status": "CREATED"
+}
+```
+
+#### Example Response (Idempotent Resubmission - 200 OK):
+Sending the exact same payload returns the existing order:
+```json
+{
+  "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
   "courier_order_id": "UB-MANIFEST-98765",
   "tracking_number": "UB-TRK-12345678",
@@ -104,7 +159,7 @@ If you re-send the exact same payload with `ORD-2026-0722-001`, the API returns 
 }
 ```
 
-#### Example Error Response — Missing Fields (400 Bad Request):
+#### Example Error Response — Missing Required Field (400 Bad Request):
 ```json
 {
   "error": {
@@ -124,8 +179,7 @@ If you re-send the exact same payload with `ORD-2026-0722-001`, the API returns 
 }
 ```
 
-#### Example Error Response — Courier Error (422 Unprocessable Entity):
-When the courier rejects the shipment (e.g. invalid pincode):
+#### Example Error Response — Provider Rejection (422 Unprocessable Entity):
 ```json
 {
   "error": {
@@ -144,16 +198,18 @@ When the courier rejects the shipment (e.g. invalid pincode):
 ### `GET /api/v1/orders/:order_id/track`
 Fetches the current status and full scan event history for an order.
 
+### 3.1 UrbaneBolt Order Tracking
+
 #### Example Request:
 ```bash
-curl -X GET "http://localhost:3000/api/v1/orders/ORD-2026-0722-001/track" \
+curl -X GET "http://localhost:3000/api/v1/orders/ORD-2026-UB-001/track" \
   -H "Accept: application/json"
 ```
 
 #### Example Response (200 OK):
 ```json
 {
-  "order_id": "ORD-2026-0722-001",
+  "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
   "tracking_number": "UB-TRK-12345678",
   "status": "IN_TRANSIT",
@@ -169,6 +225,38 @@ curl -X GET "http://localhost:3000/api/v1/orders/ORD-2026-0722-001/track" \
       "status_at": "2026-07-22T12:30:00.000Z",
       "location": "Mumbai Hub",
       "description": "Package scanned at Mumbai Hub"
+    }
+  ]
+}
+```
+
+### 3.2 MockCourier Order Tracking
+
+#### Example Request:
+```bash
+curl -X GET "http://localhost:3000/api/v1/orders/ORD-2026-MC-001/track" \
+  -H "Accept: application/json"
+```
+
+#### Example Response (200 OK):
+```json
+{
+  "order_id": "ORD-2026-MC-001",
+  "courier_partner": "mockcourier",
+  "tracking_number": "MOCK-TRK-ORD-2026-MC-001",
+  "status": "IN_TRANSIT",
+  "status_updated_at": "2026-07-22T17:00:00.000Z",
+  "events": [
+    {
+      "status": "CREATED",
+      "status_at": "2026-07-22T17:00:00.000Z",
+      "description": "Shipment created at MockCourier hub"
+    },
+    {
+      "status": "IN_TRANSIT",
+      "status_at": "2026-07-22T17:00:00.000Z",
+      "location": "Central Mock Hub",
+      "description": "In transit"
     }
   ]
 }
@@ -192,9 +280,11 @@ curl -X GET "http://localhost:3000/api/v1/orders/ORD-2026-0722-001/track" \
 ### `POST /api/v1/orders/:order_id/cancel`
 Cancels an order with the courier partner.
 
+### 4.1 UrbaneBolt Order Cancellation
+
 #### Example Request:
 ```bash
-curl -X POST "http://localhost:3000/api/v1/orders/ORD-2026-0722-001/cancel" \
+curl -X POST "http://localhost:3000/api/v1/orders/ORD-2026-UB-001/cancel" \
   -H "Content-Type: application/json" \
   -d '{
     "reason": "Customer requested cancellation before dispatch"
@@ -204,9 +294,30 @@ curl -X POST "http://localhost:3000/api/v1/orders/ORD-2026-0722-001/cancel" \
 #### Example Response (200 OK):
 ```json
 {
-  "order_id": "ORD-2026-0722-001",
+  "order_id": "ORD-2026-UB-001",
   "courier_partner": "urbanebolt",
   "tracking_number": "UB-TRK-12345678",
+  "status": "CANCELLED"
+}
+```
+
+### 4.2 MockCourier Order Cancellation
+
+#### Example Request:
+```bash
+curl -X POST "http://localhost:3000/api/v1/orders/ORD-2026-MC-001/cancel" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Merchant cancelled order"
+  }'
+```
+
+#### Example Response (200 OK):
+```json
+{
+  "order_id": "ORD-2026-MC-001",
+  "courier_partner": "mockcourier",
+  "tracking_number": "MOCK-TRK-ORD-2026-MC-001",
   "status": "CANCELLED"
 }
 ```
@@ -216,15 +327,15 @@ curl -X POST "http://localhost:3000/api/v1/orders/ORD-2026-0722-001/cancel" \
 ## 5. Bulk Order Processing
 
 ### `POST /api/v1/orders/bulk`
-Processes up to 100 orders in a single request.
+Processes up to 100 orders in a single request. Supports mixing different courier partners (`urbanebolt` and `mockcourier`) in the same batch.
 
-#### Example Request:
+#### Example Request (Mixed Couriers Batch):
 ```bash
 curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
   -H "Content-Type: application/json" \
   -d '[
     {
-      "order_id": "BULK-2026-001",
+      "order_id": "BULK-2026-UB-01",
       "courier_partner": "urbanebolt",
       "service_type": "express",
       "sender": {
@@ -246,7 +357,7 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
         "postal_code": "110001"
       },
       "package": {
-        "description": "Item 1",
+        "description": "Item 1 - Express",
         "pieces": 1,
         "weight": 1.0
       },
@@ -255,8 +366,8 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
       }
     },
     {
-      "order_id": "BULK-2026-002",
-      "courier_partner": "urbanebolt",
+      "order_id": "BULK-2026-MC-02",
+      "courier_partner": "mockcourier",
       "service_type": "standard",
       "sender": {
         "name": "Acme Warehouse",
@@ -277,7 +388,7 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
         "postal_code": "600001"
       },
       "package": {
-        "description": "Item 2",
+        "description": "Item 2 - Mock Courier",
         "pieces": 1,
         "weight": 2.0
       },
@@ -292,10 +403,10 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
 ```json
 [
   {
-    "order_id": "BULK-2026-001",
+    "order_id": "BULK-2026-UB-01",
     "status": "SUCCESS",
     "response": {
-      "order_id": "BULK-2026-001",
+      "order_id": "BULK-2026-UB-01",
       "courier_partner": "urbanebolt",
       "courier_order_id": "UB-MANIFEST-990011",
       "tracking_number": "UB-TRK-990011",
@@ -303,13 +414,13 @@ curl -X POST "http://localhost:3000/api/v1/orders/bulk" \
     }
   },
   {
-    "order_id": "BULK-2026-002",
+    "order_id": "BULK-2026-MC-02",
     "status": "SUCCESS",
     "response": {
-      "order_id": "BULK-2026-002",
-      "courier_partner": "urbanebolt",
-      "courier_order_id": "UB-MANIFEST-990022",
-      "tracking_number": "UB-TRK-990022",
+      "order_id": "BULK-2026-MC-02",
+      "courier_partner": "mockcourier",
+      "courier_order_id": "MOCK-ORD-BULK-2026-MC-02",
+      "tracking_number": "MOCK-TRK-BULK-2026-MC-02",
       "status": "CREATED"
     }
   }

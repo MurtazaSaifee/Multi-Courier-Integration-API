@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a9e8b7c6-d5e4-4f3a-2b1c-0d9e8f7a6b5c",
     "name": "Multi-Courier Integration API",
-    "description": "Postman Collection for testing Multi-Courier Integration Platform API endpoints (Health, Create Order, Track Order, Cancel Order, Bulk Processing) with UrbaneBolt courier adapter.",
+    "description": "Postman Collection for testing Multi-Courier Integration Platform API endpoints (Health, Create Order, Track Order, Cancel Order, Bulk Processing) with UrbaneBolt and MockCourier adapters.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -42,7 +42,7 @@
       "response": []
     },
     {
-      "name": "Create Single Order",
+      "name": "Create Single Order (UrbaneBolt)",
       "request": {
         "method": "POST",
         "header": [
@@ -67,6 +67,35 @@
           ]
         },
         "description": "Create a new shipment order with UrbaneBolt courier adapter"
+      },
+      "response": []
+    },
+    {
+      "name": "Create Single Order (MockCourier)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"ORD-2026-MC-001\",\n  \"courier_partner\": \"mockcourier\",\n  \"service_type\": \"standard\",\n  \"sender\": {\n    \"name\": \"Logistics Depot\",\n    \"phone\": \"+919876543210\",\n    \"email\": \"depot@example.com\",\n    \"street\": \"Warehouse Complex A\",\n    \"city\": \"Delhi\",\n    \"state\": \"Delhi\",\n    \"country\": \"IN\",\n    \"postal_code\": \"110001\"\n  },\n  \"recipient\": {\n    \"name\": \"John Smith\",\n    \"phone\": \"+919811122233\",\n    \"email\": \"john.smith@example.com\",\n    \"street\": \"10 Park Street\",\n    \"city\": \"Kolkata\",\n    \"state\": \"West Bengal\",\n    \"country\": \"IN\",\n    \"postal_code\": \"700016\"\n  },\n  \"package\": {\n    \"description\": \"Books & Stationery\",\n    \"pieces\": 2,\n    \"weight\": 2.0\n  },\n  \"payment\": {\n    \"mode\": \"PREPAID\",\n    \"amount_to_collect\": 0\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/orders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "orders"
+          ]
+        },
+        "description": "Create a new shipment order with MockCourier adapter"
       },
       "response": []
     },
@@ -124,12 +153,12 @@
             "cancel"
           ]
         },
-        "description": "Cancel an active order / shipment with UrbaneBolt adapter"
+        "description": "Cancel an active order / shipment with courier partner"
       },
       "response": []
     },
     {
-      "name": "Bulk Process Orders",
+      "name": "Bulk Process Orders (Mixed Couriers)",
       "request": {
         "method": "POST",
         "header": [
@@ -140,7 +169,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "[\n  {\n    \"order_id\": \"BULK-2026-001\",\n    \"courier_partner\": \"urbanebolt\",\n    \"service_type\": \"NDD\",\n    \"sender\": {\n      \"name\": \"Acme Warehouse\",\n      \"phone\": \"+919876543210\",\n      \"street\": \"Industrial Area\",\n      \"city\": \"Mumbai\",\n      \"state\": \"Maharashtra\",\n      \"country\": \"IN\",\n      \"postal_code\": \"400001\"\n    },\n    \"recipient\": {\n      \"name\": \"Alice Smith\",\n      \"phone\": \"+919111111111\",\n      \"street\": \"Main Street 1\",\n      \"city\": \"Delhi\",\n      \"state\": \"Delhi\",\n      \"country\": \"IN\",\n      \"postal_code\": \"110001\"\n    },\n    \"package\": {\n      \"description\": \"Item 1\",\n      \"pieces\": 1,\n      \"weight\": 1.0\n    },\n    \"payment\": {\n      \"mode\": \"PREPAID\"\n    }\n  },\n  {\n    \"order_id\": \"BULK-2026-002\",\n    \"courier_partner\": \"urbanebolt\",\n    \"service_type\": \"SDD\",\n    \"sender\": {\n      \"name\": \"Acme Warehouse\",\n      \"phone\": \"+919876543210\",\n      \"street\": \"Industrial Area\",\n      \"city\": \"Mumbai\",\n      \"state\": \"Maharashtra\",\n      \"country\": \"IN\",\n      \"postal_code\": \"400001\"\n    },\n    \"recipient\": {\n      \"name\": \"Bob Jones\",\n      \"phone\": \"+919222222222\",\n      \"street\": \"Park Road 5\",\n      \"city\": \"Chennai\",\n      \"state\": \"Tamil Nadu\",\n      \"country\": \"IN\",\n      \"postal_code\": \"600001\"\n    },\n    \"package\": {\n      \"description\": \"Item 2\",\n      \"pieces\": 1,\n      \"weight\": 2.0\n    },\n    \"payment\": {\n      \"mode\": \"PREPAID\"\n    }\n  }\n]"
+          "raw": "[\n  {\n    \"order_id\": \"BULK-2026-UB-01\",\n    \"courier_partner\": \"urbanebolt\",\n    \"service_type\": \"NDD\",\n    \"sender\": {\n      \"name\": \"Acme Warehouse\",\n      \"phone\": \"+919876543210\",\n      \"street\": \"Industrial Area\",\n      \"city\": \"Mumbai\",\n      \"state\": \"Maharashtra\",\n      \"country\": \"IN\",\n      \"postal_code\": \"400001\"\n    },\n    \"recipient\": {\n      \"name\": \"Alice Smith\",\n      \"phone\": \"+919111111111\",\n      \"street\": \"Main Street 1\",\n      \"city\": \"Delhi\",\n      \"state\": \"Delhi\",\n      \"country\": \"IN\",\n      \"postal_code\": \"110001\"\n    },\n    \"package\": {\n      \"description\": \"Item 1\",\n      \"pieces\": 1,\n      \"weight\": 1.0\n    },\n    \"payment\": {\n      \"mode\": \"PREPAID\"\n    }\n  },\n  {\n    \"order_id\": \"BULK-2026-MC-02\",\n    \"courier_partner\": \"mockcourier\",\n    \"service_type\": \"standard\",\n    \"sender\": {\n      \"name\": \"Acme Warehouse\",\n      \"phone\": \"+919876543210\",\n      \"street\": \"Industrial Area\",\n      \"city\": \"Mumbai\",\n      \"state\": \"Maharashtra\",\n      \"country\": \"IN\",\n      \"postal_code\": \"400001\"\n    },\n    \"recipient\": {\n      \"name\": \"Bob Jones\",\n      \"phone\": \"+919222222222\",\n      \"street\": \"Park Road 5\",\n      \"city\": \"Chennai\",\n      \"state\": \"Tamil Nadu\",\n      \"country\": \"IN\",\n      \"postal_code\": \"600001\"\n    },\n    \"package\": {\n      \"description\": \"Item 2\",\n      \"pieces\": 1,\n      \"weight\": 2.0\n    },\n    \"payment\": {\n      \"mode\": \"PREPAID\"\n    }\n  }\n]"
         },
         "url": {
           "raw": "{{baseUrl}}/api/v1/orders/bulk",
@@ -154,7 +183,7 @@
             "bulk"
           ]
         },
-        "description": "Process a batch of up to 100 orders with bounded concurrency for UrbaneBolt"
+        "description": "Process a batch of up to 100 orders with bounded concurrency for mixed couriers (UrbaneBolt & MockCourier)"
       },
       "response": []
     }
