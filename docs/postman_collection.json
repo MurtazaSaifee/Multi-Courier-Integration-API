@@ -1,0 +1,167 @@
+{
+  "info": {
+    "_postman_id": "a9e8b7c6-d5e4-4f3a-2b1c-0d9e8f7a6b5c",
+    "name": "Multi-Courier Integration API",
+    "description": "Postman Collection for testing Multi-Courier Integration Platform API endpoints (Health, Create Order, Track Order, Cancel Order, Bulk Processing).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "merchantOrderId",
+      "value": "ORD-2026-0722-001",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "ORD-2026-0722-001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Check service and database status"
+      },
+      "response": []
+    },
+    {
+      "name": "Create Single Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"merchant_order_id\": \"{{merchantOrderId}}\",\n  \"courier_partner\": \"urbanebolt\",\n  \"service_type\": \"EXPRESS\",\n  \"sender\": {\n    \"name\": \"Acme Warehouse\",\n    \"phone\": \"+919876543210\",\n    \"email\": \"dispatch@acme.example\",\n    \"address_line1\": \"Plot 42, Industrial Area Phase 1\",\n    \"city\": \"Mumbai\",\n    \"state\": \"Maharashtra\",\n    \"postal_code\": \"400001\",\n    \"country\": \"IN\"\n  },\n  \"recipient\": {\n    \"name\": \"Jane Doe\",\n    \"phone\": \"+919123456789\",\n    \"email\": \"jane.doe@example.com\",\n    \"address_line1\": \"Flat 302, Sunrise Apartments\",\n    \"city\": \"Bengaluru\",\n    \"state\": \"Karnataka\",\n    \"postal_code\": \"560001\",\n    \"country\": \"IN\"\n  },\n  \"package_details\": {\n    \"weight_kg\": 1.5,\n    \"dimensions_cm\": {\n      \"length\": 20,\n      \"width\": 15,\n      \"height\": 10\n    },\n    \"declared_value\": 1500,\n    \"currency\": \"INR\",\n    \"contents_description\": \"Electronics - Headphones\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/orders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "orders"
+          ]
+        },
+        "description": "Create a new order / shipment with specified courier adapter"
+      },
+      "response": []
+    },
+    {
+      "name": "Track Order",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/track",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "orders",
+            "{{orderId}}",
+            "track"
+          ]
+        },
+        "description": "Get tracking status and event history for an order"
+      },
+      "response": []
+    },
+    {
+      "name": "Cancel Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Customer requested cancellation before dispatch\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/cancel",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "orders",
+            "{{orderId}}",
+            "cancel"
+          ]
+        },
+        "description": "Cancel an active order / shipment"
+      },
+      "response": []
+    },
+    {
+      "name": "Bulk Process Orders",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "[\n  {\n    \"merchant_order_id\": \"BULK-2026-001\",\n    \"courier_partner\": \"urbanebolt\",\n    \"service_type\": \"EXPRESS\",\n    \"sender\": {\n      \"name\": \"Acme Warehouse\",\n      \"phone\": \"+919876543210\",\n      \"address_line1\": \"Industrial Area\",\n      \"city\": \"Mumbai\",\n      \"state\": \"Maharashtra\",\n      \"postal_code\": \"400001\",\n      \"country\": \"IN\"\n    },\n    \"recipient\": {\n      \"name\": \"Alice Smith\",\n      \"phone\": \"+919111111111\",\n      \"address_line1\": \"Main Street 1\",\n      \"city\": \"Delhi\",\n      \"state\": \"Delhi\",\n      \"postal_code\": \"110001\",\n      \"country\": \"IN\"\n    },\n    \"package_details\": {\n      \"weight_kg\": 1.0,\n      \"declared_value\": 500\n    }\n  },\n  {\n    \"merchant_order_id\": \"BULK-2026-002\",\n    \"courier_partner\": \"urbanebolt\",\n    \"service_type\": \"STANDARD\",\n    \"sender\": {\n      \"name\": \"Acme Warehouse\",\n      \"phone\": \"+919876543210\",\n      \"address_line1\": \"Industrial Area\",\n      \"city\": \"Mumbai\",\n      \"state\": \"Maharashtra\",\n      \"postal_code\": \"400001\",\n      \"country\": \"IN\"\n    },\n    \"recipient\": {\n      \"name\": \"Bob Jones\",\n      \"phone\": \"+919222222222\",\n      \"address_line1\": \"Park Road 5\",\n      \"city\": \"Chennai\",\n      \"state\": \"Tamil Nadu\",\n      \"postal_code\": \"600001\",\n      \"country\": \"IN\"\n    },\n    \"package_details\": {\n      \"weight_kg\": 2.0,\n      \"declared_value\": 1200\n    }\n  }\n]"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/orders/bulk",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "orders",
+            "bulk"
+          ]
+        },
+        "description": "Process a batch of up to 100 orders with bounded concurrency"
+      },
+      "response": []
+    }
+  ]
+}
