@@ -39,7 +39,7 @@ describe('courier registry', () => {
 
     expect(adapter).toBeInstanceOf(UrbaneBoltAdapter);
     expect(adapter.courierPartner).toBe('urbanebolt');
-    expect(courierRegistry.supportedCouriers()).toEqual(['urbanebolt']);
+    expect(courierRegistry.supportedCouriers()).toEqual(['mockcourier', 'urbanebolt']);
   });
 
   it('reports supported couriers for an unknown partner', () => {
@@ -53,7 +53,7 @@ describe('courier registry', () => {
         {
           field: 'courier_partner',
           message: 'Use one of the supported courier partners',
-          supported_values: ['urbanebolt']
+          supported_values: ['mockcourier', 'urbanebolt']
         }
       ]);
     }

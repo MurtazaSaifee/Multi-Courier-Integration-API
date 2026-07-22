@@ -1,5 +1,6 @@
 import { UnknownCourierError } from '../errors/application-error.js';
 import type { CourierAdapter } from './courier-adapter.js';
+import { MockCourierAdapter } from './mockcourier/mockcourier-adapter.js';
 import { UrbaneBoltAdapter } from './urbanebolt/urbanebolt-adapter.js';
 
 export interface CourierRegistry {
@@ -8,7 +9,10 @@ export interface CourierRegistry {
 }
 
 export function createCourierRegistry(
-  adapters: readonly CourierAdapter[] = [new UrbaneBoltAdapter()]
+  adapters: readonly CourierAdapter[] = [
+    new UrbaneBoltAdapter(),
+    new MockCourierAdapter()
+  ]
 ): CourierRegistry {
   const adaptersByPartner = new Map<string, CourierAdapter>();
 
