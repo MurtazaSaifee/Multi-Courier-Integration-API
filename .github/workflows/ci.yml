@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    name: Typecheck, build, and test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: multi_courier
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U user -d multi_courier"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      DATABASE_URL: postgresql://user:password@localhost:5432/multi_courier
+      TEST_DATABASE_URL: postgresql://user:password@localhost:5432/multi_courier
+      PORT: "3000"
+      URBANEBOLT_BASE_URL: https://courier.example
+      URBANEBOLT_USERNAME: ci-user
+      URBANEBOLT_PASSWORD: ci-password
+      REQUEST_TIMEOUT_MS: "5000"
+      RETRY_COUNT: "2"
+      RETRY_DELAY_MS: "250"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Run database migrations
+        run: npm run db:migrate
+
+      - name: Run unit and integration tests
+        run: npm test

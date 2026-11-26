@@ -1,6 +1,16 @@
 # Multi-Courier Integration API
 
+[![CI](https://github.com/MurtazaSaifee/Multi-Courier-Integration-API/actions/workflows/ci.yml/badge.svg)](https://github.com/MurtazaSaifee/Multi-Courier-Integration-API/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A Node.js and TypeScript backend service that connects to different courier providers (including UrbaneBolt and MockCourier) through a single unified API.
+
+## Engineering highlights
+
+- **Pluggable adapter registry:** Courier providers sit behind a uniform `CourierAdapter` contract (`createShipment`, `trackShipment`, `cancelShipment`), isolating provider-specific auth, payload mapping, and error translation from core domain and HTTP layers.
+- **Database-backed idempotency & audit trail:** Order creations are persisted in PostgreSQL (`orders` and `tracking_history` via Knex migrations), preventing duplicate shipments on retries and recording raw failure payloads for debugging.
+- **Resilient outbound HTTP & token lifecycle:** Shared HTTP client handles configurable timeouts, transient retry backoff (`RETRY_COUNT`, `RETRY_DELAY_MS`), and automatic auth token refresh on expiry.
+- **Isolated-failure bulk processing:** `POST /api/v1/orders/bulk` processes up to 100 orders via a bounded in-memory worker pool (`BULK_CONCURRENCY`), returning per-order outcomes without letting a single failure abort the batch.
 
 ---
 
